@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>NSCameraUsageDescription</key>
+	<string>SUBCAMはビデオ撮影のためにカメラを使用します</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>SUBCAMは音声録音と字幕生成のためにマイクを使用します</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>SUBCAMはリアルタイム字幕生成のために音声認識を使用します</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>SUBCAMは撮影したビデオをフォトライブラリに保存します</string>
+</dict>
+</plist>
