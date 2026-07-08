@@ -484,8 +484,8 @@ class SettingsService: ObservableObject {
         let savedLens = UserDefaults.standard.string(forKey: "cameraLens") ?? CameraLens.wide.rawValue
         self.cameraLens = CameraLens(rawValue: savedLens) ?? .wide
 
-        let savedSize = UserDefaults.standard.string(forKey: "subtitleSize") ?? SubtitleSize.standard.rawValue
-        self.subtitleSize = SubtitleSize(rawValue: savedSize) ?? .standard
+        let savedSize = UserDefaults.standard.string(forKey: "subtitleSize") ?? SubtitleSize.large.rawValue
+        self.subtitleSize = SubtitleSize(rawValue: savedSize) ?? .large
 
         let savedFont = UserDefaults.standard.string(forKey: "subtitleFont") ?? SubtitleFont.system.rawValue
         self.subtitleFont = SubtitleFont(rawValue: savedFont) ?? .system
