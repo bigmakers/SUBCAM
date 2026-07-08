@@ -65,14 +65,14 @@ enum SubtitleSize: String, CaseIterable {
     var displayName: String {
         switch self {
         case .standard: return isEN ? "Standard" : "標準"
-        case .large: return isEN ? "Large (2x)" : "大 (2x)"
+        case .large: return isEN ? "Large" : "大"
         }
     }
 
     var scale: CGFloat {
         switch self {
-        case .standard: return 1.0
-        case .large: return 2.0
+        case .standard: return 2.0
+        case .large: return 3.0
         }
     }
 }
@@ -484,8 +484,8 @@ class SettingsService: ObservableObject {
         let savedLens = UserDefaults.standard.string(forKey: "cameraLens") ?? CameraLens.wide.rawValue
         self.cameraLens = CameraLens(rawValue: savedLens) ?? .wide
 
-        let savedSize = UserDefaults.standard.string(forKey: "subtitleSize") ?? SubtitleSize.large.rawValue
-        self.subtitleSize = SubtitleSize(rawValue: savedSize) ?? .large
+        let savedSize = UserDefaults.standard.string(forKey: "subtitleSize") ?? SubtitleSize.standard.rawValue
+        self.subtitleSize = SubtitleSize(rawValue: savedSize) ?? .standard
 
         let savedFont = UserDefaults.standard.string(forKey: "subtitleFont") ?? SubtitleFont.system.rawValue
         self.subtitleFont = SubtitleFont(rawValue: savedFont) ?? .system
