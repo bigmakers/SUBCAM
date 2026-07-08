@@ -417,6 +417,15 @@ struct SettingsView: View {
                         }
                     }
 
+                    // Apple Intelligence note
+                    if settings.aiProvider == .apple {
+                        Section {
+                            Text(L10n.appleProviderNote)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+
                     // Local LLM endpoint
                     if settings.aiProvider == .localLLM {
                         Section(L10n.endpoint) {

@@ -287,6 +287,7 @@ enum AIResponseStyle: String, CaseIterable {
 }
 
 enum AIProvider: String, CaseIterable {
+    case apple = "apple"
     case gemini = "gemini"
     case claude = "claude"
     case openai = "openai"
@@ -294,6 +295,7 @@ enum AIProvider: String, CaseIterable {
 
     var displayName: String {
         switch self {
+        case .apple: return "Apple Intelligence"
         case .gemini: return "Gemini"
         case .claude: return "Claude"
         case .openai: return "ChatGPT"
@@ -303,6 +305,7 @@ enum AIProvider: String, CaseIterable {
 
     var keychainService: String? {
         switch self {
+        case .apple: return nil
         case .gemini: return KeychainService.geminiKey
         case .claude: return KeychainService.claudeKey
         case .openai: return KeychainService.openaiKey
@@ -358,6 +361,7 @@ enum L10n {
     static var apiKey: String { isEN ? "API Key" : "APIキー" }
     static var endpoint: String { isEN ? "Endpoint" : "エンドポイント" }
     static var language: String { isEN ? "Language" : "言語" }
+    static var appleProviderNote: String { isEN ? "On-device recognition. No API key needed. Sentence generation requires Apple Intelligence (iPhone 15 Pro or later, iOS 26+); otherwise labels are shown in English." : "端末内で画像認識します。APIキー不要・通信なし。文章生成はApple Intelligence対応機種（iPhone 15 Pro以降・iOS 26以降）で利用でき、非対応機種では英語ラベル表示になります。" }
 
     // Format options
     static var standardFrame: String { isEN ? "Standard" : "Standard — 標準フレーム" }

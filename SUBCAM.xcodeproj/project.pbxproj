@@ -28,6 +28,7 @@
 		AA000015 /* ClaudeVisionProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000015 /* ClaudeVisionProvider.swift */; };
 		AA000016 /* OpenAIVisionProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000016 /* OpenAIVisionProvider.swift */; };
 		AA000017 /* LocalLLMVisionProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000017 /* LocalLLMVisionProvider.swift */; };
+		AA000018 /* AppleVisionProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000018 /* AppleVisionProvider.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -54,6 +55,7 @@
 		AB000015 /* ClaudeVisionProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeVisionProvider.swift; sourceTree = "<group>"; };
 		AB000016 /* OpenAIVisionProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAIVisionProvider.swift; sourceTree = "<group>"; };
 		AB000017 /* LocalLLMVisionProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalLLMVisionProvider.swift; sourceTree = "<group>"; };
+		AB000018 /* AppleVisionProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleVisionProvider.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -124,6 +126,7 @@
 				AB000015 /* ClaudeVisionProvider.swift */,
 				AB000016 /* OpenAIVisionProvider.swift */,
 				AB000017 /* LocalLLMVisionProvider.swift */,
+				AB000018 /* AppleVisionProvider.swift */,
 			);
 			path = AIProviders;
 			sourceTree = "<group>";
@@ -233,6 +236,7 @@
 				AA000015 /* ClaudeVisionProvider.swift in Sources */,
 				AA000016 /* OpenAIVisionProvider.swift in Sources */,
 				AA000017 /* LocalLLMVisionProvider.swift in Sources */,
+				AA000018 /* AppleVisionProvider.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

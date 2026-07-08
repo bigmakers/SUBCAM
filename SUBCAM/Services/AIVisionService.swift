@@ -53,6 +53,8 @@ final class AIVisionService: ObservableObject, @unchecked Sendable {
         let provider = settings.aiProvider
 
         switch provider {
+        case .apple:
+            currentProvider = AppleVisionProvider()
         case .gemini:
             if let key = KeychainService.load(service: KeychainService.geminiKey), !key.isEmpty {
                 currentProvider = GeminiVisionProvider(apiKey: key)
