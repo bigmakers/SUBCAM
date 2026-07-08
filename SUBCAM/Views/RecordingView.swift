@@ -13,16 +13,72 @@ struct RecordingView: View {
     @State private var savedSuccess = false
     @State private var showSettings = false
 
+    @State private var focusPoint: CGPoint?
+    @State private var showFocusIndicator = false
+    @State private var focusIndicatorGeneration = 0
+    @State private var pinchBaseZoom: CGFloat = 1.0
+    @State private var showZoomChip = false
+    @State private var zoomChipGeneration = 0
+    @State private var showSavedToast = false
+    @State private var recDotOpacity: Double = 1.0
+
     var body: some View {
         ZStack {
             // Camera preview
             CameraPreviewView(
                 session: cameraService.captureSession,
-                videoRotationAngle: cameraService.videoRotationAngle
+                videoRotationAngle: cameraService.videoRotationAngle,
+                onTapFocus: { devicePoint, layerPoint in
+                    cameraService.focusAndExpose(at: devicePoint)
+                    let generation = focusIndicatorGeneration + 1
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        focusIndicatorGeneration = generation
+                        focusPoint = layerPoint
+                        showFocusIndicator = true
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                        guard generation == focusIndicatorGeneration else { return }
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            showFocusIndicator = false
+                        }
+                    }
+                },
+                onPinchZoom: { state, scale in
+                    switch state {
+                    case .began:
+                        pinchBaseZoom = cameraService.currentZoomFactor
+                        zoomChipGeneration += 1
+                        withAnimation(.easeOut(duration: 0.15)) {
+                            showZoomChip = true
+                        }
+                    case .changed:
+                        cameraService.setZoomFactor(pinchBaseZoom * scale)
+                    case .ended, .cancelled:
+                        let generation = zoomChipGeneration
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                            guard generation == zoomChipGeneration else { return }
+                            withAnimation(.easeOut(duration: 0.15)) {
+                                showZoomChip = false
+                            }
+                        }
+                    default:
+                        break
+                    }
+                }
             )
             .saturation(settings.monochromeMode ? 0 : 1)
             .contrast(settings.monochromeMode && !settings.cinematicMode ? 1.1 : settings.cinematicMode ? 1.15 : 1)
             .ignoresSafeArea()
+
+            // Focus indicator
+            if showFocusIndicator, let point = focusPoint {
+                RoundedRectangle(cornerRadius: 2)
+                    .stroke(Color.yellow, lineWidth: 1.5)
+                    .frame(width: 72, height: 72)
+                    .position(point)
+                    .id(focusIndicatorGeneration)
+                    .transition(.scale(scale: 1.4).combined(with: .opacity))
+            }
 
             // Subtitle overlay (preview)
             SubtitleOverlayView(
@@ -34,6 +90,7 @@ struct RecordingView: View {
                 subtitlePosition: settings.subtitlePosition,
                 subtitleFont: settings.subtitleFont
             )
+            .allowsHitTesting(false)
             .ignoresSafeArea()
 
             // Controls overlay
@@ -45,6 +102,16 @@ struct RecordingView: View {
 
             // Mode badge (top center)
             modeBadge
+
+            // Saved toast (top center, below mode badge)
+            if showSavedToast {
+                VStack {
+                    savedToast
+                        .padding(.top, cameraService.isLandscape ? 46 : 92)
+                    Spacer()
+                }
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
         }
         .onAppear {
             setupServices()
@@ -162,6 +229,9 @@ struct RecordingView: View {
     private var portraitControls: some View {
         VStack {
             HStack {
+                subtitleModeToggle
+                    .padding(.leading, 20)
+                    .padding(.top, 60)
                 Spacer()
                 settingsButton
                     .padding(.trailing, 20)
@@ -174,6 +244,14 @@ struct RecordingView: View {
 
             Spacer()
 
+            if showZoomChip {
+                zoomChip
+                    .padding(.bottom, 12)
+            }
+
+            lensChips
+                .padding(.bottom, 16)
+
             recordButton
                 .padding(.bottom, 40)
         }
@@ -185,6 +263,8 @@ struct RecordingView: View {
         HStack {
             VStack {
                 settingsButton
+                subtitleModeToggle
+                    .padding(.top, 12)
                 Spacer()
             }
             .padding(.leading, 20)
@@ -203,11 +283,19 @@ struct RecordingView: View {
 
             Spacer()
 
-            // Right rail: record button
-            VStack {
-                Spacer()
-                recordButton
-                Spacer()
+            // Right rail: lens chips + record button
+            HStack(spacing: 16) {
+                lensChipsVertical
+
+                VStack {
+                    Spacer()
+                    if showZoomChip {
+                        zoomChip
+                            .padding(.bottom, 8)
+                    }
+                    recordButton
+                    Spacer()
+                }
             }
             .padding(.trailing, 30)
         }
@@ -233,6 +321,13 @@ struct RecordingView: View {
             Circle()
                 .fill(.red)
                 .frame(width: 10, height: 10)
+                .opacity(recDotOpacity)
+                .onAppear {
+                    recDotOpacity = 1.0
+                    withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
+                        recDotOpacity = 0.3
+                    }
+                }
             Text(formatDuration(recordingService.recordingDuration))
                 .font(.system(size: 16, weight: .medium, design: .monospaced))
                 .foregroundColor(.white)
@@ -250,17 +345,96 @@ struct RecordingView: View {
                     .stroke(.white, lineWidth: 4)
                     .frame(width: 72, height: 72)
 
-                if recordingService.isRecording {
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(.red)
-                        .frame(width: 28, height: 28)
-                } else {
-                    Circle()
-                        .fill(.red)
-                        .frame(width: 60, height: 60)
-                }
+                RoundedRectangle(cornerRadius: recordingService.isRecording ? 6 : 30)
+                    .fill(.red)
+                    .frame(
+                        width: recordingService.isRecording ? 30 : 60,
+                        height: recordingService.isRecording ? 30 : 60
+                    )
+                    .animation(.spring(response: 0.3, dampingFraction: 0.7), value: recordingService.isRecording)
             }
         }
+    }
+
+    private var zoomChip: some View {
+        Text(String(format: "%.1fx", cameraService.currentZoomFactor))
+            .font(.system(size: 13, weight: .semibold, design: .monospaced))
+            .foregroundColor(.white)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(Color.black.opacity(0.5))
+            .clipShape(Capsule())
+    }
+
+    private var lensChips: some View {
+        HStack(spacing: 10) {
+            lensChip(.ultraWide)
+            lensChip(.wide)
+        }
+    }
+
+    private var lensChipsVertical: some View {
+        VStack(spacing: 10) {
+            lensChip(.ultraWide)
+            lensChip(.wide)
+        }
+    }
+
+    private func lensChip(_ lens: CameraLens) -> some View {
+        let isSelected = settings.cameraLens == lens
+        return Button {
+            settings.cameraLens = lens
+        } label: {
+            Text(lens == .ultraWide ? "0.5" : "1x")
+                .font(.system(size: isSelected ? 13 : 12, weight: .semibold, design: .rounded))
+                .foregroundColor(isSelected ? .yellow : .white)
+                .frame(width: isSelected ? 38 : 34, height: isSelected ? 38 : 34)
+                .background(Color.black.opacity(isSelected ? 0.5 : 0.35))
+                .clipShape(Circle())
+        }
+        .disabled(recordingService.isRecording)
+        .opacity(recordingService.isRecording ? 0.45 : 1.0)
+        .animation(.easeOut(duration: 0.15), value: isSelected)
+    }
+
+    private var subtitleModeToggle: some View {
+        HStack(spacing: 0) {
+            subtitleModeSegment(.speech, icon: "waveform")
+            subtitleModeSegment(.aiVision, icon: "eye")
+        }
+        .frame(height: 36)
+        .background(Color.black.opacity(0.4))
+        .clipShape(Capsule())
+        .disabled(recordingService.isRecording)
+        .opacity(recordingService.isRecording ? 0.45 : 1.0)
+    }
+
+    private func subtitleModeSegment(_ mode: SubtitleMode, icon: String) -> some View {
+        let isSelected = settings.subtitleMode == mode
+        return Button {
+            settings.subtitleMode = mode
+        } label: {
+            Image(systemName: icon)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(.white)
+                .frame(width: 36, height: 36)
+                .background(isSelected ? Color.white.opacity(0.25) : Color.clear)
+                .clipShape(Capsule())
+        }
+    }
+
+    private var savedToast: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundColor(.green)
+            Text(L10n.videoSavedMessage)
+                .foregroundColor(.white)
+        }
+        .font(.system(size: 13, weight: .medium))
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(Color.black.opacity(0.7))
+        .clipShape(Capsule())
     }
 
     // MARK: - Actions
@@ -316,6 +490,7 @@ struct RecordingView: View {
 
     private func toggleRecording() {
         if recordingService.isRecording {
+            UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
             Task {
                 // Unlock capture connection rotation
                 cameraService.isRecordingActive = false
@@ -324,8 +499,19 @@ struct RecordingView: View {
                 if let url = await recordingService.stopRecording() {
                     let success = await VideoRecordingService.saveToPhotoLibrary(url: url)
                     await MainActor.run {
-                        savedSuccess = success
-                        showSavedAlert = true
+                        if success {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                showSavedToast = true
+                            }
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                    showSavedToast = false
+                                }
+                            }
+                        } else {
+                            savedSuccess = false
+                            showSavedAlert = true
+                        }
                     }
                     try? FileManager.default.removeItem(at: url)
                 }
@@ -337,6 +523,7 @@ struct RecordingView: View {
                 }
             }
         } else {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             // Lock capture connection rotation to prevent buffer dimension changes
             cameraService.isRecordingActive = true
 

@@ -24,6 +24,8 @@ class CameraService: NSObject, ObservableObject {
     @Published var isLandscape = false
     @Published var videoRotationAngle: CGFloat = 90
 
+    @Published var currentZoomFactor: CGFloat = 1.0
+
     /// When true, the capture connection's rotation angle is frozen
     /// (prevents buffer dimension changes that break AVAssetWriter mid-recording).
     /// Preview and UI orientation still update freely.
@@ -93,6 +95,14 @@ class CameraService: NSObject, ObservableObject {
             name: UIDevice.orientationDidChangeNotification,
             object: nil
         )
+
+        // Listen for subject area changes (revert to continuous auto focus/exposure after tap-to-focus)
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(subjectAreaDidChange),
+            name: .AVCaptureDeviceSubjectAreaDidChange,
+            object: nil
+        )
     }
 
     @objc private func deviceOrientationDidChange() {
@@ -137,6 +147,13 @@ class CameraService: NSObject, ObservableObject {
         applyExposureBias(settings.exposureBias.evValue)
         applyCinematicCameraSettings()
         updateVideoOrientation()
+
+        if let device = cameraDevice {
+            let zoom = device.videoZoomFactor
+            DispatchQueue.main.async {
+                self.currentZoomFactor = zoom
+            }
+        }
     }
 
     // MARK: - Video Quality
@@ -319,8 +336,77 @@ class CameraService: NSObject, ObservableObject {
             }
 
             device.unlockForConfiguration()
+
+            let zoom = device.videoZoomFactor
+            DispatchQueue.main.async {
+                self.currentZoomFactor = zoom
+            }
         } catch {
             print("Failed to configure camera: \(error)")
+        }
+    }
+
+    // MARK: - Focus & Zoom
+
+    var maxZoomFactor: CGFloat {
+        min(cameraDevice?.activeFormat.videoMaxZoomFactor ?? 1.0, 10.0)
+    }
+
+    func setZoomFactor(_ factor: CGFloat) {
+        guard let device = cameraDevice else { return }
+        do {
+            try device.lockForConfiguration()
+            let clamped = max(1.0, min(factor, maxZoomFactor))
+            device.videoZoomFactor = clamped
+            device.unlockForConfiguration()
+            DispatchQueue.main.async {
+                self.currentZoomFactor = clamped
+            }
+        } catch {
+            print("Failed to set zoom: \(error)")
+        }
+    }
+
+    func focusAndExpose(at devicePoint: CGPoint) {
+        guard let device = cameraDevice else { return }
+        do {
+            try device.lockForConfiguration()
+            if device.isFocusPointOfInterestSupported {
+                device.focusPointOfInterest = devicePoint
+                if device.isFocusModeSupported(.autoFocus) {
+                    device.focusMode = .autoFocus
+                }
+            }
+            if device.isExposurePointOfInterestSupported {
+                device.exposurePointOfInterest = devicePoint
+                if device.isExposureModeSupported(.continuousAutoExposure) {
+                    device.exposureMode = .continuousAutoExposure
+                }
+            }
+            device.isSubjectAreaChangeMonitoringEnabled = true
+            device.unlockForConfiguration()
+        } catch {
+            print("Failed to focus/expose: \(error)")
+        }
+    }
+
+    @objc private func subjectAreaDidChange() {
+        guard let device = cameraDevice else { return }
+        do {
+            try device.lockForConfiguration()
+            let center = CGPoint(x: 0.5, y: 0.5)
+            if device.isFocusPointOfInterestSupported, device.isFocusModeSupported(.continuousAutoFocus) {
+                device.focusPointOfInterest = center
+                device.focusMode = .continuousAutoFocus
+            }
+            if device.isExposurePointOfInterestSupported, device.isExposureModeSupported(.continuousAutoExposure) {
+                device.exposurePointOfInterest = center
+                device.exposureMode = .continuousAutoExposure
+            }
+            device.isSubjectAreaChangeMonitoringEnabled = false
+            device.unlockForConfiguration()
+        } catch {
+            print("Failed to reset focus/exposure: \(error)")
         }
     }
 
@@ -339,6 +425,7 @@ class CameraService: NSObject, ObservableObject {
     func stopSession() {
         guard captureSession.isRunning else { return }
         NotificationCenter.default.removeObserver(self, name: UIDevice.orientationDidChangeNotification, object: nil)
+        NotificationCenter.default.removeObserver(self, name: .AVCaptureDeviceSubjectAreaDidChange, object: nil)
         UIDevice.current.endGeneratingDeviceOrientationNotifications()
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             self?.captureSession.stopRunning()
