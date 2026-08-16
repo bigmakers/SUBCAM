@@ -2,13 +2,14 @@ import Foundation
 
 struct OpenAIVisionProvider: VisionAIProvider {
     let apiKey: String
+    let model: String
 
     func analyze(imageData: Data, prompt: String) async throws -> String {
         let base64 = imageData.base64EncodedString()
         let url = URL(string: "https://api.openai.com/v1/chat/completions")!
 
         let body: [String: Any] = [
-            "model": "gpt-4o-mini",
+            "model": model,
             "max_tokens": 100,
             "messages": [[
                 "role": "user",

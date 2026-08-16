@@ -236,6 +236,42 @@ struct SettingsView: View {
                         }
                     }
 
+                    // Model selection (per provider; presets + free-form ID)
+                    if settings.aiProvider.supportsModelSelection {
+                        Section {
+                            ForEach(settings.aiProvider.modelPresets, id: \.id) { preset in
+                                Button {
+                                    settings.setAIModel(preset.id, for: settings.aiProvider)
+                                } label: {
+                                    HStack {
+                                        Text(preset.label)
+                                            .foregroundColor(.primary)
+                                        Spacer()
+                                        if settings.aiModel(for: settings.aiProvider) == preset.id {
+                                            Image(systemName: "checkmark")
+                                                .foregroundColor(.blue)
+                                        }
+                                    }
+                                }
+                            }
+
+                            TextField(
+                                settings.aiProvider.defaultModel,
+                                text: Binding(
+                                    get: { settings.aiModels[settings.aiProvider.rawValue] ?? "" },
+                                    set: { settings.setAIModel($0, for: settings.aiProvider) }
+                                )
+                            )
+                            .autocapitalization(.none)
+                            .disableAutocorrection(true)
+                            .font(.system(.body, design: .monospaced))
+                        } header: {
+                            Text("\(settings.aiProvider.displayName) \(L10n.aiModel)")
+                        } footer: {
+                            Text(L10n.aiModelNote)
+                        }
+                    }
+
                     // API key input
                     if let keychainId = settings.aiProvider.keychainService {
                         Section("\(settings.aiProvider.displayName) \(L10n.apiKey)") {

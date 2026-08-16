@@ -2,6 +2,7 @@ import Foundation
 
 struct LocalLLMVisionProvider: VisionAIProvider {
     let endpoint: String
+    let model: String
 
     func analyze(imageData: Data, prompt: String) async throws -> String {
         let base64 = imageData.base64EncodedString()
@@ -11,7 +12,7 @@ struct LocalLLMVisionProvider: VisionAIProvider {
 
         // OpenAI-compatible API format (works with Ollama, etc.)
         let body: [String: Any] = [
-            "model": "llava",
+            "model": model,
             "max_tokens": 100,
             "messages": [[
                 "role": "user",

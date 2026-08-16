@@ -197,6 +197,9 @@ struct RecordingView: View {
         .onChange(of: settings.aiProvider) { _, _ in
             aiVisionService.updateProvider()
         }
+        .onChange(of: settings.aiModels) { _, _ in
+            aiVisionService.updateProvider()
+        }
         .onChange(of: settings.cameraLens) { _, newValue in
             guard !recordingService.isRecording else { return }
             cameraService.switchLens(newValue)

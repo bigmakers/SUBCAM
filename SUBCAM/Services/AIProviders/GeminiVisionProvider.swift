@@ -2,10 +2,11 @@ import Foundation
 
 struct GeminiVisionProvider: VisionAIProvider {
     let apiKey: String
+    let model: String
 
     func analyze(imageData: Data, prompt: String) async throws -> String {
         let base64 = imageData.base64EncodedString()
-        let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=\(apiKey)")!
+        let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent?key=\(apiKey)")!
 
         let body: [String: Any] = [
             "contents": [[

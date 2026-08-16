@@ -335,6 +335,49 @@ enum AIProvider: String, CaseIterable {
         case .localLLM: return nil
         }
     }
+
+    /// Whether the provider accepts a caller-chosen model ID
+    var supportsModelSelection: Bool {
+        self != .apple
+    }
+
+    /// Model used when the user hasn't picked one
+    var defaultModel: String {
+        switch self {
+        case .apple: return ""
+        case .gemini: return "gemini-2.0-flash"
+        case .claude: return "claude-sonnet-5"
+        case .openai: return "gpt-4o-mini"
+        case .localLLM: return "llava"
+        }
+    }
+
+    /// Curated model choices shown in Settings (any ID can still be typed manually)
+    var modelPresets: [(id: String, label: String)] {
+        switch self {
+        case .apple, .localLLM:
+            return []
+        case .claude:
+            return [
+                ("claude-haiku-4-5", isEN ? "Claude Haiku 4.5 — fast, low cost" : "Claude Haiku 4.5 — 高速・低コスト"),
+                ("claude-sonnet-5", isEN ? "Claude Sonnet 5 — balanced" : "Claude Sonnet 5 — バランス"),
+                ("claude-opus-5", isEN ? "Claude Opus 5 — highest quality" : "Claude Opus 5 — 最高品質"),
+            ]
+        case .openai:
+            return [
+                ("gpt-4o-mini", isEN ? "GPT-4o mini — fast, low cost" : "GPT-4o mini — 高速・低コスト"),
+                ("gpt-4o", "GPT-4o"),
+                ("gpt-4.1-mini", "GPT-4.1 mini"),
+                ("gpt-4.1", "GPT-4.1"),
+            ]
+        case .gemini:
+            return [
+                ("gemini-2.0-flash", isEN ? "Gemini 2.0 Flash — fast, low cost" : "Gemini 2.0 Flash — 高速・低コスト"),
+                ("gemini-2.5-flash", "Gemini 2.5 Flash"),
+                ("gemini-2.5-pro", isEN ? "Gemini 2.5 Pro — highest quality" : "Gemini 2.5 Pro — 最高品質"),
+            ]
+        }
+    }
 }
 
 // MARK: - Speech Language
@@ -425,6 +468,11 @@ enum L10n {
     // Subtitle style drawer
     static var subtitleSizeLabel: String { isEN ? "Size" : "サイズ" }
     static var subtitlePositionLabel: String { isEN ? "Position" : "位置" }
+
+    // AI model selection
+    static var aiModel: String { isEN ? "Model" : "モデル" }
+    static var aiModelCustomPlaceholder: String { isEN ? "Custom model ID" : "カスタムモデルID" }
+    static var aiModelNote: String { isEN ? "You can also enter any model ID directly. Leave empty to use the default." : "モデルIDを直接入力することもできます。空欄の場合は既定のモデルを使用します。" }
 
     // Alerts
     static var saveComplete: String { isEN ? "Saved" : "保存完了" }
@@ -522,6 +570,21 @@ class SettingsService: ObservableObject {
         didSet { UserDefaults.standard.set(localLLMEndpoint, forKey: "localLLMEndpoint") }
     }
 
+    // Per-provider AI model overrides (provider rawValue -> model ID)
+    @Published var aiModels: [String: String] {
+        didSet { UserDefaults.standard.set(aiModels, forKey: "aiModels") }
+    }
+
+    /// Effective model for a provider: user override, or the provider default
+    func aiModel(for provider: AIProvider) -> String {
+        let value = (aiModels[provider.rawValue] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return value.isEmpty ? provider.defaultModel : value
+    }
+
+    func setAIModel(_ model: String, for provider: AIProvider) {
+        aiModels[provider.rawValue] = model
+    }
+
     @Published var isProUnlocked: Bool {
         didSet { UserDefaults.standard.set(isProUnlocked, forKey: "isProUnlocked") }
     }
@@ -582,6 +645,7 @@ class SettingsService: ObservableObject {
         self.aiResponseStyle = AIResponseStyle(rawValue: savedResponseStyle) ?? .word
 
         self.localLLMEndpoint = UserDefaults.standard.string(forKey: "localLLMEndpoint") ?? ""
+        self.aiModels = UserDefaults.standard.dictionary(forKey: "aiModels") as? [String: String] ?? [:]
 
         self.isProUnlocked = UserDefaults.standard.object(forKey: "isProUnlocked") as? Bool ?? false
     }

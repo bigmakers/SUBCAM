@@ -2,13 +2,14 @@ import Foundation
 
 struct ClaudeVisionProvider: VisionAIProvider {
     let apiKey: String
+    let model: String
 
     func analyze(imageData: Data, prompt: String) async throws -> String {
         let base64 = imageData.base64EncodedString()
         let url = URL(string: "https://api.anthropic.com/v1/messages")!
 
         let body: [String: Any] = [
-            "model": "claude-sonnet-4-20250514",
+            "model": model,
             "max_tokens": 100,
             "messages": [[
                 "role": "user",

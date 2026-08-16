@@ -52,31 +52,33 @@ final class AIVisionService: ObservableObject, @unchecked Sendable {
         let settings = SettingsService.shared
         let provider = settings.aiProvider
 
+        let model = settings.aiModel(for: provider)
+
         switch provider {
         case .apple:
             currentProvider = AppleVisionProvider()
         case .gemini:
             if let key = KeychainService.load(service: KeychainService.geminiKey), !key.isEmpty {
-                currentProvider = GeminiVisionProvider(apiKey: key)
+                currentProvider = GeminiVisionProvider(apiKey: key, model: model)
             } else {
                 currentProvider = nil
             }
         case .claude:
             if let key = KeychainService.load(service: KeychainService.claudeKey), !key.isEmpty {
-                currentProvider = ClaudeVisionProvider(apiKey: key)
+                currentProvider = ClaudeVisionProvider(apiKey: key, model: model)
             } else {
                 currentProvider = nil
             }
         case .openai:
             if let key = KeychainService.load(service: KeychainService.openaiKey), !key.isEmpty {
-                currentProvider = OpenAIVisionProvider(apiKey: key)
+                currentProvider = OpenAIVisionProvider(apiKey: key, model: model)
             } else {
                 currentProvider = nil
             }
         case .localLLM:
             let endpoint = settings.localLLMEndpoint
             if !endpoint.isEmpty {
-                currentProvider = LocalLLMVisionProvider(endpoint: endpoint)
+                currentProvider = LocalLLMVisionProvider(endpoint: endpoint, model: model)
             } else {
                 currentProvider = nil
             }
