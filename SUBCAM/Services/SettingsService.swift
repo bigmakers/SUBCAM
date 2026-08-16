@@ -406,6 +406,26 @@ enum L10n {
     static var delete: String { isEN ? "Delete" : "削除" }
     static var apiKeyConfigured: String { isEN ? "API Key configured" : "APIキー設定済み" }
 
+    // Recording screen — subtitle mode toggle
+    static var subtitleModeVoiceShort: String { isEN ? "Voice" : "音声" }
+    static var subtitleModeAIShort: String { isEN ? "AI" : "AI" }
+    static var aiSubtitleRecordingHint: String { isEN ? "AI captions are generated while recording" : "AI字幕は録画中に生成されます" }
+
+    // Recording screen — look bar (accessibility labels; chips show short codes)
+    static var lookStandard: String { isEN ? "Standard" : "標準" }
+    static var lookScope: String { isEN ? "CinemaScope" : "シネスコ" }
+    static var lookCinematic: String { isEN ? "Cinematic" : "シネマ" }
+    static var lookMono: String { isEN ? "Monochrome" : "モノクロ" }
+
+    // Recording screen — shutter row
+    static var recentVideo: String { isEN ? "Recent video" : "最近のビデオ" }
+    static var subtitleStyle: String { isEN ? "Subtitle Style" : "字幕スタイル" }
+    static var speechTranslationShort: String { isEN ? "Translation" : "翻訳" }
+
+    // Subtitle style drawer
+    static var subtitleSizeLabel: String { isEN ? "Size" : "サイズ" }
+    static var subtitlePositionLabel: String { isEN ? "Position" : "位置" }
+
     // Alerts
     static var saveComplete: String { isEN ? "Saved" : "保存完了" }
     static var saveFailed: String { isEN ? "Save Failed" : "保存失敗" }

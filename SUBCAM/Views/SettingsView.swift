@@ -9,9 +9,6 @@ struct SettingsView: View {
     var onVideoQualityChanged: ((VideoQuality) -> Void)?
     var onHDRChanged: ((Bool) -> Void)?
     var onExposureChanged: ((Float) -> Void)?
-    var onCinemaScopeChanged: ((Bool) -> Void)?
-    var onCinematicModeChanged: ((Bool) -> Void)?
-    var onLensChanged: ((CameraLens) -> Void)?
 
     var body: some View {
         NavigationView {
@@ -97,98 +94,6 @@ struct SettingsView: View {
                     }
                 }
 
-                // MARK: - Camera (Lens + Format)
-                Section(L10n.camera) {
-                    ForEach(CameraLens.allCases, id: \.self) { lens in
-                        Button {
-                            settings.cameraLens = lens
-                            onLensChanged?(lens)
-                        } label: {
-                            settingRow(
-                                icon: lens == .ultraWide ? "camera.on.rectangle" : "camera",
-                                text: lens.displayName,
-                                isSelected: settings.cameraLens == lens
-                            )
-                        }
-                    }
-
-                    Divider()
-
-                    Button {
-                        settings.cinemaScope = false
-                        onCinemaScopeChanged?(false)
-                    } label: {
-                        settingRow(icon: "rectangle.portrait", text: L10n.standardFrame, isSelected: !settings.cinemaScope)
-                    }
-
-                    Button {
-                        settings.cinemaScope = true
-                        onCinemaScopeChanged?(true)
-                    } label: {
-                        settingRow(icon: "film.stack", text: L10n.scopeFrame, isSelected: settings.cinemaScope)
-                    }
-                }
-
-                // MARK: - Look (Style + Color)
-                Section(L10n.look) {
-                    Button {
-                        settings.cinematicMode = false
-                        onCinematicModeChanged?(false)
-                    } label: {
-                        settingRow(icon: "camera", text: L10n.natural, isSelected: !settings.cinematicMode)
-                    }
-
-                    Button {
-                        settings.cinematicMode = true
-                        onCinematicModeChanged?(true)
-                    } label: {
-                        settingRow(icon: "camera.filters", text: L10n.cinematic, isSelected: settings.cinematicMode)
-                    }
-
-                    Divider()
-
-                    Button {
-                        settings.monochromeMode = false
-                    } label: {
-                        settingRow(icon: "circle.fill", text: L10n.colorMode, isSelected: !settings.monochromeMode)
-                    }
-
-                    Button {
-                        settings.monochromeMode = true
-                    } label: {
-                        settingRow(icon: "circle.lefthalf.filled", text: L10n.monoMode, isSelected: settings.monochromeMode)
-                    }
-                }
-
-                // MARK: - Letterbox (CinemaScope only)
-                if settings.cinemaScope {
-                    Section(L10n.letterbox) {
-                        ForEach(LetterboxColor.allCases, id: \.self) { color in
-                            Button {
-                                settings.letterboxColor = color
-                            } label: {
-                                HStack {
-                                    let rgb = color.rgbComponents
-                                    Circle()
-                                        .fill(Color(red: rgb.r, green: rgb.g, blue: rgb.b))
-                                        .frame(width: 22, height: 22)
-                                        .overlay(
-                                            Circle()
-                                                .stroke(color == .black ? Color.gray.opacity(0.5) : Color.clear, lineWidth: 1)
-                                        )
-                                    Text(color.displayName)
-                                        .foregroundColor(.primary)
-                                    Spacer()
-                                    if settings.letterboxColor == color {
-                                        Image(systemName: "checkmark")
-                                            .foregroundColor(.blue)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
                 // MARK: - Video Quality (Pro: Quality + HDR + Exposure)
                 Section {
                     ForEach(VideoQuality.allCases, id: \.self) { quality in
@@ -248,76 +153,6 @@ struct SettingsView: View {
                         if !settings.isProUnlocked {
                             Image(systemName: "lock.fill")
                                 .font(.caption2)
-                        }
-                    }
-                }
-
-                // MARK: - Subtitle (Mode + Position + Size)
-                Section(L10n.subtitle) {
-                    ForEach(SubtitleMode.allCases, id: \.self) { mode in
-                        Button {
-                            settings.subtitleMode = mode
-                        } label: {
-                            settingRow(
-                                icon: mode == .speech ? "waveform" : "eye",
-                                text: mode.displayName,
-                                isSelected: settings.subtitleMode == mode
-                            )
-                        }
-                    }
-
-                    Divider()
-
-                    ForEach(SubtitlePosition.allCases, id: \.self) { position in
-                        Button {
-                            settings.subtitlePosition = position
-                        } label: {
-                            HStack {
-                                Text(position.displayName)
-                                    .foregroundColor(.primary)
-                                Spacer()
-                                if settings.subtitlePosition == position {
-                                    Image(systemName: "checkmark")
-                                        .foregroundColor(.blue)
-                                }
-                            }
-                        }
-                    }
-
-                    Divider()
-
-                    ForEach(SubtitleSize.allCases, id: \.self) { size in
-                        Button {
-                            settings.subtitleSize = size
-                        } label: {
-                            HStack {
-                                Text(size.displayName)
-                                    .foregroundColor(.primary)
-                                Spacer()
-                                if settings.subtitleSize == size {
-                                    Image(systemName: "checkmark")
-                                        .foregroundColor(.blue)
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // MARK: - Font
-                Section(L10n.subtitleFontHeader) {
-                    ForEach(SubtitleFont.allCases, id: \.self) { font in
-                        Button {
-                            settings.subtitleFont = font
-                        } label: {
-                            HStack {
-                                Text(font.displayName)
-                                    .foregroundColor(.primary)
-                                Spacer()
-                                if settings.subtitleFont == font {
-                                    Image(systemName: "checkmark")
-                                        .foregroundColor(.blue)
-                                }
-                            }
                         }
                     }
                 }

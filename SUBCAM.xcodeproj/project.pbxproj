@@ -30,6 +30,7 @@
 		AA000017 /* LocalLLMVisionProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000017 /* LocalLLMVisionProvider.swift */; };
 		AA000018 /* AppleVisionProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000018 /* AppleVisionProvider.swift */; };
 		AA000019 /* TranslationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000019 /* TranslationService.swift */; };
+		AA00001A /* SubtitleStyleDrawer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB00001A /* SubtitleStyleDrawer.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -58,6 +59,7 @@
 		AB000017 /* LocalLLMVisionProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalLLMVisionProvider.swift; sourceTree = "<group>"; };
 		AB000018 /* AppleVisionProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleVisionProvider.swift; sourceTree = "<group>"; };
 		AB000019 /* TranslationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationService.swift; sourceTree = "<group>"; };
+		AB00001A /* SubtitleStyleDrawer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubtitleStyleDrawer.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -100,6 +102,7 @@
 				AB000004 /* RecordingView.swift */,
 				AB000005 /* SubtitleOverlayView.swift */,
 				AB00000F /* SettingsView.swift */,
+				AB00001A /* SubtitleStyleDrawer.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -241,6 +244,7 @@
 				AA000017 /* LocalLLMVisionProvider.swift in Sources */,
 				AA000018 /* AppleVisionProvider.swift in Sources */,
 				AA000019 /* TranslationService.swift in Sources */,
+				AA00001A /* SubtitleStyleDrawer.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
