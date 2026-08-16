@@ -10,7 +10,10 @@ struct ClaudeVisionProvider: VisionAIProvider {
 
         let body: [String: Any] = [
             "model": model,
-            "max_tokens": 100,
+            "max_tokens": 300,
+            // Claude Sonnet 5 / Opus 5 think by default; captions need speed,
+            // not reasoning, and thinking would eat the small token budget.
+            "thinking": ["type": "disabled"],
             "messages": [[
                 "role": "user",
                 "content": [
@@ -50,7 +53,7 @@ struct ClaudeVisionProvider: VisionAIProvider {
 
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
               let content = json["content"] as? [[String: Any]],
-              let text = content.first?["text"] as? String else {
+              let text = content.first(where: { $0["type"] as? String == "text" })?["text"] as? String else {
             throw VisionAIError.invalidResponse
         }
 
