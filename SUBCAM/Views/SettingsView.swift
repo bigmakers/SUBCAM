@@ -341,6 +341,29 @@ struct SettingsView: View {
                             }
                         }
                     }
+
+                    // MARK: - Subtitle Translation (on-device, iOS 18+)
+                    Section {
+                        ForEach(SpeechTranslation.allCases, id: \.self) { option in
+                            Button {
+                                settings.speechTranslation = option
+                            } label: {
+                                HStack {
+                                    Text(option.displayName)
+                                        .foregroundColor(.primary)
+                                    Spacer()
+                                    if settings.speechTranslation == option {
+                                        Image(systemName: "checkmark")
+                                            .foregroundColor(.blue)
+                                    }
+                                }
+                            }
+                        }
+                    } header: {
+                        Text(L10n.subtitleTranslation)
+                    } footer: {
+                        Text(L10n.subtitleTranslationNote)
+                    }
                 }
 
                 // MARK: - AI Settings (AI mode only)

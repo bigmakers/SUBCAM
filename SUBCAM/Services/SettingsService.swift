@@ -137,6 +137,29 @@ enum SubtitlePosition: String, CaseIterable {
     }
 }
 
+enum SpeechTranslation: String, CaseIterable {
+    case off = "off"
+    case en = "en"
+    case ja = "ja"
+
+    var displayName: String {
+        switch self {
+        case .off: return isEN ? "Off" : "オフ"
+        case .en: return isEN ? "Translate to English" : "英語に翻訳"
+        case .ja: return isEN ? "Translate to Japanese" : "日本語に翻訳"
+        }
+    }
+
+    /// BCP 47 language code of the translation target, nil when off
+    var targetLanguageCode: String? {
+        switch self {
+        case .off: return nil
+        case .en: return "en"
+        case .ja: return "ja"
+        }
+    }
+}
+
 enum SubtitleMode: String, CaseIterable {
     case speech = "speech"
     case aiVision = "aiVision"
@@ -357,6 +380,8 @@ enum L10n {
     static var subtitle: String { isEN ? "Subtitle" : "字幕" }
     static var subtitleFontHeader: String { isEN ? "Font" : "フォント" }
     static var speechLanguage: String { isEN ? "Speech Language" : "音声認識の言語" }
+    static var subtitleTranslation: String { isEN ? "Subtitle Translation" : "字幕の翻訳" }
+    static var subtitleTranslationNote: String { isEN ? "Translates spoken words into the selected language in real time (on-device, no network required, iOS 18+). Language data may need to be downloaded on first use." : "話した言葉を選んだ言語にリアルタイム翻訳して字幕表示します（オンデバイス処理・通信不要、iOS 18以降）。初回は言語データのダウンロードが必要な場合があります。" }
     static var aiSettings: String { isEN ? "AI Settings" : "AI設定" }
     static var apiKey: String { isEN ? "API Key" : "APIキー" }
     static var endpoint: String { isEN ? "Endpoint" : "エンドポイント" }
@@ -415,6 +440,18 @@ class SettingsService: ObservableObject {
 
     @Published var speechLanguageId: String {
         didSet { UserDefaults.standard.set(speechLanguageId, forKey: "speechLanguageId") }
+    }
+
+    @Published var speechTranslation: SpeechTranslation {
+        didSet { UserDefaults.standard.set(speechTranslation.rawValue, forKey: "speechTranslation") }
+    }
+
+    /// Whether speech subtitles should show translated text
+    /// (translation on, and the speech language differs from the target)
+    var isSpeechTranslationActive: Bool {
+        guard let target = speechTranslation.targetLanguageCode else { return false }
+        let source = speechLanguageId.split(separator: "-").first.map(String.init) ?? speechLanguageId
+        return source != target
     }
 
     @Published var videoQuality: VideoQuality {
@@ -492,6 +529,9 @@ class SettingsService: ObservableObject {
 
         let savedLang = UserDefaults.standard.string(forKey: "speechLanguageId") ?? "ja-JP"
         self.speechLanguageId = savedLang
+
+        let savedTranslation = UserDefaults.standard.string(forKey: "speechTranslation") ?? SpeechTranslation.off.rawValue
+        self.speechTranslation = SpeechTranslation(rawValue: savedTranslation) ?? .off
 
         let savedQuality = UserDefaults.standard.string(forKey: "videoQuality") ?? VideoQuality.hd1080p30.rawValue
         self.videoQuality = VideoQuality(rawValue: savedQuality) ?? .hd1080p30

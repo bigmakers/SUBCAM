@@ -7,6 +7,7 @@ struct RecordingView: View {
     @StateObject private var recordingService = VideoRecordingService()
     @StateObject private var speechService = SpeechRecognitionService()
     @StateObject private var aiVisionService = AIVisionService()
+    @StateObject private var translationService = TranslationService()
     @ObservedObject private var settings = SettingsService.shared
 
     @State private var showSavedAlert = false
@@ -80,9 +81,16 @@ struct RecordingView: View {
                     .transition(.scale(scale: 1.4).combined(with: .opacity))
             }
 
+            // Invisible owner of the on-device translation session (iOS 18+)
+            SpeechTranslationHost(
+                service: translationService,
+                translation: settings.speechTranslation,
+                sourceLanguageId: settings.speechLanguageId
+            )
+
             // Subtitle overlay (preview)
             SubtitleOverlayView(
-                text: settings.subtitleMode == .speech ? speechService.displayText : aiVisionService.displayText,
+                text: previewSubtitleText,
                 cinemaScope: settings.cinemaScope,
                 subtitleScale: settings.subtitleSize.scale,
                 isRecording: recordingService.isRecording,
@@ -123,6 +131,16 @@ struct RecordingView: View {
         }
         .onChange(of: settings.speechLanguageId) { _, newLang in
             speechService.setLanguage(newLang)
+            translationService.clear()
+            recordingService.speechTranslationActive = translationActive
+        }
+        .onChange(of: settings.speechTranslation) { _, _ in
+            translationService.clear()
+            recordingService.speechTranslationActive = translationActive
+        }
+        .onChange(of: speechService.displayText) { _, newText in
+            guard translationActive else { return }
+            translationService.submit(newText)
         }
         .onChange(of: settings.cinemaScope) { _, newValue in
             guard !recordingService.isRecording else { return }
@@ -151,6 +169,7 @@ struct RecordingView: View {
                 aiVisionService.stop()
             } else {
                 speechService.stopRecognition()
+                translationService.clear()
             }
         }
         .onChange(of: settings.aiProvider) { _, _ in
@@ -437,6 +456,26 @@ struct RecordingView: View {
         .clipShape(Capsule())
     }
 
+    // MARK: - Subtitle text
+
+    /// Whether speech subtitles are translated (setting on, languages differ, iOS 18+)
+    private var translationActive: Bool {
+        if #available(iOS 18.0, *) {
+            return settings.isSpeechTranslationActive
+        }
+        return false
+    }
+
+    private var previewSubtitleText: String {
+        if settings.subtitleMode == .aiVision {
+            return aiVisionService.displayText
+        }
+        if translationActive {
+            return translationService.displayText
+        }
+        return speechService.displayText
+    }
+
     // MARK: - Actions
 
     private func setupServices() {
@@ -458,7 +497,9 @@ struct RecordingView: View {
 
         recordingService.speechService = speechService
         recordingService.aiVisionService = aiVisionService
+        recordingService.translationService = translationService
         recordingService.subtitleMode = settings.subtitleMode
+        recordingService.speechTranslationActive = translationActive
 
         // Apply saved settings
         speechService.setLanguage(settings.speechLanguageId)
@@ -529,6 +570,7 @@ struct RecordingView: View {
 
             recordingService.letterboxColor = settings.letterboxColor
             recordingService.subtitleMode = settings.subtitleMode
+            recordingService.speechTranslationActive = translationActive
             recordingService.startRecording()
             if settings.subtitleMode == .speech {
                 speechService.startRecognition()

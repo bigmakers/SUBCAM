@@ -17,7 +17,9 @@ final class VideoRecordingService: NSObject, ObservableObject, @unchecked Sendab
 
     var speechService: SpeechRecognitionService?
     var aiVisionService: AIVisionService?
+    var translationService: TranslationService?
     var subtitleMode: SubtitleMode = .speech
+    var speechTranslationActive: Bool = false
     var cinemaScope = false
     var cinematicMode = false
     var monochromeMode = false
@@ -258,6 +260,8 @@ final class VideoRecordingService: NSObject, ObservableObject, @unchecked Sendab
         let subtitleText: String
         if subtitleMode == .aiVision {
             subtitleText = aiVisionService?.currentText ?? ""
+        } else if speechTranslationActive, let translationService {
+            subtitleText = translationService.currentText
         } else {
             subtitleText = speechService?.currentText ?? ""
         }
