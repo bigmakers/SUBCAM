@@ -92,7 +92,7 @@ struct SubtitleOverlayView: View {
                 .foregroundColor(.white)
                 .shadow(color: .black, radius: 3, x: 1, y: 1)
                 .multilineTextAlignment(.center)
-                .lineLimit(1)
+                .lineLimit(2)
                 .truncationMode(.tail)
                 .padding(.horizontal, 24)
                 .padding(.vertical, max(12 * subtitleScale, 8))

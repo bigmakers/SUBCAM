@@ -171,7 +171,6 @@ struct SubtitleRenderer {
     private static func renderStandard(context: CGContext, text: String, width: CGFloat, height: CGFloat, subtitleScale: CGFloat = 1.0, subtitlePosition: SubtitlePosition = .bottom, danmakuOffsetX: CGFloat = 0) {
         guard !text.isEmpty else { return }
 
-        let barHeight = max(height * 0.12 * subtitleScale, minBarHeight)
         let barPadding = width * 0.05
 
         let fontSize = 20.0 * subtitleScale * (width / 390.0)  // Scale relative to iPhone 14 Pro width
@@ -196,48 +195,41 @@ struct SubtitleRenderer {
 
         let attributedString = NSAttributedString(string: text, attributes: attributes)
 
+        // Wrap long captions onto a second line instead of truncating mid-sentence.
+        // Measure the wrapped height (capped at two lines) so the bar grows to fit
+        // and the text stays vertically centered. Matches the preview's lineLimit(2).
+        let maxTextWidth = width - barPadding * 2
+        let measuredHeight = attributedString.boundingRect(
+            with: CGSize(width: maxTextWidth, height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading],
+            context: nil
+        ).height
+        let textHeight = min(ceil(measuredHeight), ceil(font.lineHeight * 2.2))
+        let barHeight = max(height * 0.12 * subtitleScale, textHeight + fontSize, minBarHeight)
+
+        func drawBarAndText(barY: CGFloat) {
+            context.setFillColor(UIColor.black.withAlphaComponent(0.6).cgColor)
+            context.fill(CGRect(x: 0, y: barY, width: width, height: barHeight))
+            let textRect = CGRect(
+                x: barPadding,
+                y: barY + (barHeight - textHeight) / 2,
+                width: maxTextWidth,
+                height: textHeight
+            )
+            UIGraphicsPushContext(context)
+            attributedString.draw(in: textRect)
+            UIGraphicsPopContext()
+        }
+
         switch subtitlePosition {
         case .top:
-            let barY: CGFloat = 0
-            context.setFillColor(UIColor.black.withAlphaComponent(0.6).cgColor)
-            context.fill(CGRect(x: 0, y: barY, width: width, height: barHeight))
-            let textRect = CGRect(
-                x: barPadding,
-                y: barY + (barHeight - fontSize * 2.4) / 2,
-                width: width - barPadding * 2,
-                height: fontSize * 2.4
-            )
-            UIGraphicsPushContext(context)
-            attributedString.draw(in: textRect)
-            UIGraphicsPopContext()
+            drawBarAndText(barY: 0)
 
         case .center:
-            let barY = (height - barHeight) / 2
-            context.setFillColor(UIColor.black.withAlphaComponent(0.6).cgColor)
-            context.fill(CGRect(x: 0, y: barY, width: width, height: barHeight))
-            let textRect = CGRect(
-                x: barPadding,
-                y: barY + (barHeight - fontSize * 2.4) / 2,
-                width: width - barPadding * 2,
-                height: fontSize * 2.4
-            )
-            UIGraphicsPushContext(context)
-            attributedString.draw(in: textRect)
-            UIGraphicsPopContext()
+            drawBarAndText(barY: (height - barHeight) / 2)
 
         case .bottom:
-            let barY = height - barHeight
-            context.setFillColor(UIColor.black.withAlphaComponent(0.6).cgColor)
-            context.fill(CGRect(x: 0, y: barY, width: width, height: barHeight))
-            let textRect = CGRect(
-                x: barPadding,
-                y: barY + (barHeight - fontSize * 2.4) / 2,
-                width: width - barPadding * 2,
-                height: fontSize * 2.4
-            )
-            UIGraphicsPushContext(context)
-            attributedString.draw(in: textRect)
-            UIGraphicsPopContext()
+            drawBarAndText(barY: height - barHeight)
 
         case .danmaku:
             // Y position based on text hash

@@ -71,8 +71,8 @@ enum SubtitleSize: String, CaseIterable {
 
     var scale: CGFloat {
         switch self {
-        case .standard: return 2.0
-        case .large: return 3.0
+        case .standard: return 1.0
+        case .large: return 1.5
         }
     }
 }
