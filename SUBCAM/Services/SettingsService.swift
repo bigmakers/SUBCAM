@@ -410,7 +410,7 @@ enum L10n {
     static var done: String { isEN ? "Done" : "完了" }
 
     // Pro
-    static var proDescription: String { isEN ? "Unlock quality, HDR & exposure settings" : "画質・HDR・露出補正の設定を解除" }
+    static var proDescription: String { isEN ? "Unlock quality, HDR & exposure settings, and remove the #SUBCAM watermark" : "画質・HDR・露出補正の設定を解除、#SUBCAM透かしを除去" }
     static var purchase: String { isEN ? "Purchase" : "で購入" }
     static var restorePurchase: String { isEN ? "Restore Purchase" : "購入を復元" }
 

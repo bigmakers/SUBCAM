@@ -107,6 +107,23 @@ struct RecordingView: View {
             .allowsHitTesting(false)
             .ignoresSafeArea()
 
+            // Watermark preview (free tier; mirrors the burned-in watermark)
+            if !settings.isProUnlocked {
+                VStack {
+                    HStack {
+                        Spacer()
+                        Text("#SUBCAM")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.55))
+                            .shadow(color: .black.opacity(0.5), radius: 2, x: 1, y: 1)
+                    }
+                    Spacer()
+                }
+                .padding(.top, cameraService.isLandscape ? 64 : 110)
+                .padding(.trailing, 14)
+                .allowsHitTesting(false)
+            }
+
             // Controls overlay
             if cameraService.isLandscape {
                 landscapeControls

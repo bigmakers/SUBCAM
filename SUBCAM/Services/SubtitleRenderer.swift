@@ -90,7 +90,38 @@ struct SubtitleRenderer {
             renderStandard(context: context, text: text, width: cgWidth, height: cgHeight, subtitleScale: subtitleScale, subtitlePosition: subtitlePosition, danmakuOffsetX: danmakuOffsetX)
         }
 
+        // Free tier burns a #SUBCAM watermark; Pro removes it
+        if !SettingsService.shared.isProUnlocked {
+            drawWatermark(context: context, width: cgWidth, height: cgHeight)
+        }
+
         return output
+    }
+
+    // MARK: - Watermark (free tier only)
+
+    private static func drawWatermark(context: CGContext, width: CGFloat, height: CGFloat) {
+        let fontSize = max(width * 0.028, 18)
+        let font = UIFont.systemFont(ofSize: fontSize, weight: .semibold)
+
+        let shadow = NSShadow()
+        shadow.shadowColor = UIColor.black.withAlphaComponent(0.5)
+        shadow.shadowOffset = CGSize(width: 1, height: 1)
+        shadow.shadowBlurRadius = 2
+
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .foregroundColor: UIColor.white.withAlphaComponent(0.55),
+            .shadow: shadow,
+        ]
+        let string = NSAttributedString(string: "#SUBCAM", attributes: attributes)
+        let size = string.size()
+        let inset = width * 0.03
+        let rect = CGRect(x: width - size.width - inset, y: inset, width: size.width, height: size.height)
+
+        UIGraphicsPushContext(context)
+        string.draw(in: rect)
+        UIGraphicsPopContext()
     }
 
     // MARK: - Color grading (cinematic and monochrome can be combined)
