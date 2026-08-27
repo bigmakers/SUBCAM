@@ -469,6 +469,13 @@ enum L10n {
     static var subtitleSizeLabel: String { isEN ? "Size" : "サイズ" }
     static var subtitlePositionLabel: String { isEN ? "Position" : "位置" }
 
+    // Permission screen
+    static var permissionIntro: String { isEN ? "Record video with real-time captions" : "リアルタイム字幕付きビデオ撮影" }
+    static var permissionCamera: String { isEN ? "Camera" : "カメラ" }
+    static var permissionMicrophone: String { isEN ? "Microphone" : "マイク" }
+    static var permissionSpeech: String { isEN ? "Speech Recognition" : "音声認識" }
+    static var continueButton: String { isEN ? "Continue" : "続ける" }
+
     // AI model selection
     static var aiModel: String { isEN ? "Model" : "モデル" }
     static var aiModelCustomPlaceholder: String { isEN ? "Custom model ID" : "カスタムモデルID" }

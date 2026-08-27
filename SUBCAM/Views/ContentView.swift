@@ -33,24 +33,24 @@ struct PermissionRequestView: View {
                     .font(.system(size: 36, weight: .bold))
                     .foregroundColor(.white)
 
-                Text("リアルタイム字幕付きビデオ撮影")
+                Text(L10n.permissionIntro)
                     .font(.body)
                     .foregroundColor(.gray)
 
                 VStack(alignment: .leading, spacing: 16) {
                     PermissionRow(
                         icon: "camera.fill",
-                        title: "カメラ",
+                        title: L10n.permissionCamera,
                         granted: permissionManager.cameraAuthorized
                     )
                     PermissionRow(
                         icon: "mic.fill",
-                        title: "マイク",
+                        title: L10n.permissionMicrophone,
                         granted: permissionManager.microphoneAuthorized
                     )
                     PermissionRow(
                         icon: "waveform",
-                        title: "音声認識",
+                        title: L10n.permissionSpeech,
                         granted: permissionManager.speechAuthorized
                     )
                 }
@@ -61,7 +61,7 @@ struct PermissionRequestView: View {
                         await permissionManager.requestAllPermissions()
                     }
                 } label: {
-                    Text("権限を許可する")
+                    Text(L10n.continueButton)
                         .font(.headline)
                         .foregroundColor(.black)
                         .frame(maxWidth: .infinity)
