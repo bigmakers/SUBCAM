@@ -390,8 +390,8 @@ struct SpeechLanguage: Identifiable, Hashable {
         SpeechLanguage(id: "ja-JP", displayName: "日本語"),
         SpeechLanguage(id: "en-US", displayName: "English (US)"),
         SpeechLanguage(id: "en-GB", displayName: "English (UK)"),
-        SpeechLanguage(id: "zh-Hans", displayName: "中文 (简体)"),
-        SpeechLanguage(id: "zh-Hant", displayName: "中文 (繁體)"),
+        SpeechLanguage(id: "zh-CN", displayName: "中文 (简体)"),
+        SpeechLanguage(id: "zh-TW", displayName: "中文 (繁體)"),
         SpeechLanguage(id: "ko-KR", displayName: "한국어"),
         SpeechLanguage(id: "fr-FR", displayName: "Français"),
         SpeechLanguage(id: "de-DE", displayName: "Deutsch"),
@@ -475,6 +475,10 @@ enum L10n {
     static var permissionMicrophone: String { isEN ? "Microphone" : "マイク" }
     static var permissionSpeech: String { isEN ? "Speech Recognition" : "音声認識" }
     static var continueButton: String { isEN ? "Continue" : "続ける" }
+
+    // Speech recognition status hints
+    static var speechUnavailable: String { isEN ? "Speech recognition isn't available for this language right now. Check your network connection." : "この言語の音声認識が現在利用できません。ネットワーク接続を確認してください" }
+    static var speechLanguageUnsupported: String { isEN ? "This language isn't supported for speech recognition on this device" : "この言語の音声認識はこの端末では利用できません" }
 
     // AI model selection
     static var aiModel: String { isEN ? "Model" : "モデル" }
@@ -618,7 +622,9 @@ class SettingsService: ObservableObject {
         self.subtitleFont = SubtitleFont(rawValue: savedFont) ?? .system
 
         let savedLang = UserDefaults.standard.string(forKey: "speechLanguageId") ?? "ja-JP"
-        self.speechLanguageId = savedLang
+        // Earlier builds stored script-only identifiers that SFSpeechRecognizer rejects
+        let migrated = ["zh-Hans": "zh-CN", "zh-Hant": "zh-TW"][savedLang] ?? savedLang
+        self.speechLanguageId = migrated
 
         let savedTranslation = UserDefaults.standard.string(forKey: "speechTranslation") ?? SpeechTranslation.off.rawValue
         self.speechTranslation = SpeechTranslation(rawValue: savedTranslation) ?? .off

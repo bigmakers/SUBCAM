@@ -204,9 +204,9 @@ struct SubtitleRenderer {
 
         let barPadding = width * 0.05
 
-        let fontSize = 20.0 * subtitleScale * (width / 390.0)  // Scale relative to iPhone 14 Pro width
+        let baseFontSize = 20.0 * subtitleScale * (width / 390.0)  // Scale relative to iPhone 14 Pro width
         let subtitleFont = SettingsService.shared.subtitleFont
-        let font = subtitleFont.uiFont(size: fontSize, bold: true)
+        let maxTextWidth = width - barPadding * 2
 
         let shadow = NSShadow()
         shadow.shadowColor = UIColor.black
@@ -217,25 +217,39 @@ struct SubtitleRenderer {
         paragraphStyle.alignment = subtitlePosition == .danmaku ? .left : .center
         paragraphStyle.lineBreakMode = subtitlePosition == .danmaku ? .byClipping : .byTruncatingTail
 
-        let attributes: [NSAttributedString.Key: Any] = [
-            .font: font,
-            .foregroundColor: UIColor.white,
-            .shadow: shadow,
-            .paragraphStyle: paragraphStyle
-        ]
+        func makeString(_ size: CGFloat) -> (NSAttributedString, UIFont) {
+            let font = subtitleFont.uiFont(size: size, bold: true)
+            let attributes: [NSAttributedString.Key: Any] = [
+                .font: font,
+                .foregroundColor: UIColor.white,
+                .shadow: shadow,
+                .paragraphStyle: paragraphStyle
+            ]
+            return (NSAttributedString(string: text, attributes: attributes), font)
+        }
+        func wrappedHeight(_ string: NSAttributedString) -> CGFloat {
+            string.boundingRect(
+                with: CGSize(width: maxTextWidth, height: .greatestFiniteMagnitude),
+                options: [.usesLineFragmentOrigin, .usesFontLeading],
+                context: nil
+            ).height
+        }
 
-        let attributedString = NSAttributedString(string: text, attributes: attributes)
-
-        // Wrap long captions onto a second line instead of truncating mid-sentence.
-        // Measure the wrapped height (capped at two lines) so the bar grows to fit
-        // and the text stays vertically centered. Matches the preview's lineLimit(2).
-        let maxTextWidth = width - barPadding * 2
-        let measuredHeight = attributedString.boundingRect(
-            with: CGSize(width: maxTextWidth, height: .greatestFiniteMagnitude),
-            options: [.usesLineFragmentOrigin, .usesFontLeading],
-            context: nil
-        ).height
-        let textHeight = min(ceil(measuredHeight), ceil(font.lineHeight * 2.2))
+        // Long captions (AI sentences especially) wrap up to three lines; if they still
+        // don't fit, shrink the font down to 55% before falling back to tail truncation.
+        // Mirrors the preview's lineLimit(3) + minimumScaleFactor(0.55).
+        let maxLines: CGFloat = 3
+        var fontSize = baseFontSize
+        var (attributedString, font) = makeString(fontSize)
+        var measuredHeight = wrappedHeight(attributedString)
+        if subtitlePosition != .danmaku {
+            while measuredHeight > font.lineHeight * (maxLines + 0.2) && fontSize > baseFontSize * 0.55 {
+                fontSize = max(fontSize * 0.9, baseFontSize * 0.55)
+                (attributedString, font) = makeString(fontSize)
+                measuredHeight = wrappedHeight(attributedString)
+            }
+        }
+        let textHeight = min(ceil(measuredHeight), ceil(font.lineHeight * (maxLines + 0.2)))
         let barHeight = max(height * 0.12 * subtitleScale, textHeight + fontSize, minBarHeight)
 
         func drawBarAndText(barY: CGFloat) {
@@ -296,12 +310,14 @@ struct SubtitleRenderer {
 
         guard !text.isEmpty else { return }
 
-        // Font size: fit 1 line within bar, clamp to bar height
+        // Fit inside the bar: start at the base size, wrap up to two lines, and
+        // shrink down to 55% before truncating. Mirrors the preview's lineLimit(2).
         let maxFontSize = barHeight * 0.55
-        let baseFontSize = 18.0 * subtitleScale * (width / 844.0)  // Scale relative to iPhone 14 Pro landscape width
-        let fontSize = min(baseFontSize, maxFontSize)
+        let baseFontSize = min(18.0 * subtitleScale * (width / 844.0), maxFontSize)  // Scale relative to iPhone 14 Pro landscape width
         let subtitleFont = SettingsService.shared.subtitleFont
-        let font = subtitleFont.uiFont(size: fontSize, bold: false)
+        let textPadding = width * 0.1
+        let maxTextWidth = width - textPadding * 2
+        let maxTextHeight = barHeight * 0.85
 
         let shadow = NSShadow()
         if letterboxColor.usesDarkText {
@@ -320,17 +336,38 @@ struct SubtitleRenderer {
             ? UIColor(red: 0.1, green: 0.1, blue: 0.1, alpha: 1.0)
             : UIColor(red: 1.0, green: 0.98, blue: 0.94, alpha: 1.0)
 
-        let attributes: [NSAttributedString.Key: Any] = [
-            .font: font,
-            .foregroundColor: subtitleColor,
-            .shadow: shadow,
-            .paragraphStyle: paragraphStyle,
-            .kern: 1.5
-        ]
+        func makeString(_ size: CGFloat) -> (NSAttributedString, UIFont) {
+            let font = subtitleFont.uiFont(size: size, bold: false)
+            let attributes: [NSAttributedString.Key: Any] = [
+                .font: font,
+                .foregroundColor: subtitleColor,
+                .shadow: shadow,
+                .paragraphStyle: paragraphStyle,
+                .kern: 1.5
+            ]
+            return (NSAttributedString(string: text, attributes: attributes), font)
+        }
+        func wrappedHeight(_ string: NSAttributedString) -> CGFloat {
+            string.boundingRect(
+                with: CGSize(width: maxTextWidth, height: .greatestFiniteMagnitude),
+                options: [.usesLineFragmentOrigin, .usesFontLeading],
+                context: nil
+            ).height
+        }
 
-        let attributedString = NSAttributedString(string: text, attributes: attributes)
-        let textPadding = width * 0.1
-        let textHeight = min(fontSize * 1.4, barHeight * 0.85)
+        var fontSize = baseFontSize
+        var (attributedString, font) = makeString(fontSize)
+        var measuredHeight = wrappedHeight(attributedString)
+        if subtitlePosition != .danmaku {
+            while (measuredHeight > maxTextHeight || measuredHeight > font.lineHeight * 2.2) && fontSize > baseFontSize * 0.55 {
+                fontSize = max(fontSize * 0.9, baseFontSize * 0.55)
+                (attributedString, font) = makeString(fontSize)
+                measuredHeight = wrappedHeight(attributedString)
+            }
+        }
+        let textHeight = subtitlePosition == .danmaku
+            ? min(fontSize * 1.4, maxTextHeight)
+            : min(ceil(measuredHeight), maxTextHeight)
 
         switch subtitlePosition {
         case .top:

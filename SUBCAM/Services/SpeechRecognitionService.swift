@@ -1,7 +1,7 @@
 import Speech
 import AVFoundation
 
-class SpeechRecognitionService: ObservableObject {
+final class SpeechRecognitionService: NSObject, ObservableObject, SFSpeechRecognizerDelegate {
     private var speechRecognizer: SFSpeechRecognizer?
     private let recognitionQueue = DispatchQueue(label: "com.subcam.speechRecognition.queue")
     private var currentLocaleId: String = ""
@@ -9,6 +9,14 @@ class SpeechRecognitionService: ObservableObject {
     private var recognitionTask: SFSpeechRecognitionTask?
     private var restartWorkItem: DispatchWorkItem?
     private var isRecognitionActive = false
+
+    // Each task gets a generation so callbacks from a task we already replaced are ignored
+    private var taskGeneration = 0
+    // On-device recognition needs the language's dictation assets, which are usually
+    // missing for languages other than the device language. Start on-device and fall
+    // back to server-based recognition the first time an on-device task fails.
+    private var preferOnDevice = true
+    private var consecutiveErrors = 0
 
     // Thread-safe current text for subtitle renderer (read from video queue)
     private let textLock = NSLock()
@@ -21,29 +29,60 @@ class SpeechRecognitionService: ObservableObject {
     // Published text for UI display (main thread only)
     @Published var displayText: String = ""
     @Published var isRecognizing = false
+    /// Non-empty when recognition can't run for the selected language (shown as a hint)
+    @Published var statusHint: String = ""
 
     func setLanguage(_ localeId: String) {
         let needsRestart = recognitionQueue.sync { isRecognitionActive }
         if needsRestart { stopRecognition() }
 
         currentLocaleId = localeId
-        speechRecognizer = SFSpeechRecognizer(locale: Locale(identifier: localeId))
+        speechRecognizer = Self.makeRecognizer(localeId)
+        speechRecognizer?.delegate = self
+        recognitionQueue.sync {
+            preferOnDevice = true
+            consecutiveErrors = 0
+        }
+        if speechRecognizer == nil {
+            print("[Speech] no recognizer for locale \(localeId)")
+            setHint(L10n.speechLanguageUnsupported)
+        } else {
+            setHint("")
+        }
 
         if needsRestart { startRecognition() }
     }
 
+    private static func makeRecognizer(_ localeId: String) -> SFSpeechRecognizer? {
+        if let r = SFSpeechRecognizer(locale: Locale(identifier: localeId)) { return r }
+        // Match on language code against what this device actually supports (e.g. "zh-CN" vs "zh-Hans-CN")
+        let wanted = Locale(identifier: localeId)
+        let supported = SFSpeechRecognizer.supportedLocales()
+        if let match = supported.first(where: {
+            $0.language.languageCode == wanted.language.languageCode
+                && ($0.region == wanted.region || $0.language.script == wanted.language.script)
+        }) ?? supported.first(where: { $0.language.languageCode == wanted.language.languageCode }) {
+            return SFSpeechRecognizer(locale: match)
+        }
+        return nil
+    }
+
     func startRecognition() {
         if speechRecognizer == nil {
-            let localeId = SettingsService.shared.speechLanguageId
-            currentLocaleId = localeId
-            speechRecognizer = SFSpeechRecognizer(locale: Locale(identifier: localeId))
+            setLanguage(SettingsService.shared.speechLanguageId)
         }
-        guard let speechRecognizer, speechRecognizer.isAvailable else { return }
+        guard let speechRecognizer else { return }
 
         recognitionQueue.sync {
             stopRecognitionLocked()
             isRecognitionActive = true
-            beginRecognitionTaskLocked(with: speechRecognizer)
+            consecutiveErrors = 0
+            if speechRecognizer.isAvailable {
+                beginRecognitionTaskLocked(with: speechRecognizer)
+            } else {
+                // availabilityDidChange starts the task once the recognizer is ready
+                print("[Speech] \(currentLocaleId) not available yet, waiting")
+            }
         }
 
         DispatchQueue.main.async {
@@ -51,35 +90,71 @@ class SpeechRecognitionService: ObservableObject {
         }
     }
 
+    // MARK: - SFSpeechRecognizerDelegate
+
+    func speechRecognizer(_ speechRecognizer: SFSpeechRecognizer, availabilityDidChange available: Bool) {
+        recognitionQueue.async {
+            guard self.isRecognitionActive else { return }
+            if available, self.recognitionRequest == nil {
+                self.beginRecognitionTaskLocked(with: speechRecognizer)
+            } else if !available {
+                self.setHint(L10n.speechUnavailable)
+            }
+        }
+    }
+
     private func beginRecognitionTaskLocked(with speechRecognizer: SFSpeechRecognizer) {
         let request = SFSpeechAudioBufferRecognitionRequest()
         request.shouldReportPartialResults = true
-        if speechRecognizer.supportsOnDeviceRecognition {
-            request.requiresOnDeviceRecognition = true
-        }
+        let onDevice = preferOnDevice && speechRecognizer.supportsOnDeviceRecognition
+        request.requiresOnDeviceRecognition = onDevice
 
         recognitionRequest = request
+        taskGeneration += 1
+        let generation = taskGeneration
+        var gotResult = false
 
         recognitionTask = speechRecognizer.recognitionTask(with: request) { [weak self] result, error in
             guard let self else { return }
 
             if let result {
+                gotResult = true
                 let text = result.bestTranscription.formattedString
                 self.currentText = text
                 DispatchQueue.main.async {
                     self.displayText = text
                 }
-
-                if result.isFinal {
-                    self.recognitionQueue.async {
+                self.recognitionQueue.async {
+                    guard generation == self.taskGeneration else { return }
+                    self.consecutiveErrors = 0
+                    self.setHint("")
+                    if result.isFinal {
                         self.scheduleRestartLocked(after: 0.3)
                     }
                 }
             }
 
-            if error != nil {
+            if let error {
+                let ns = error as NSError
                 self.recognitionQueue.async {
-                    self.scheduleRestartLocked(after: 0.3)
+                    guard generation == self.taskGeneration, self.isRecognitionActive else { return }
+                    print("[Speech] \(self.currentLocaleId) onDevice=\(onDevice) error \(ns.domain) \(ns.code): \(ns.localizedDescription)")
+                    if onDevice && !gotResult {
+                        // Most likely no on-device model for this language: retry via server
+                        self.preferOnDevice = false
+                        self.scheduleRestartLocked(after: 0.1)
+                        return
+                    }
+                    if gotResult {
+                        self.scheduleRestartLocked(after: 0.3)
+                        return
+                    }
+                    self.consecutiveErrors += 1
+                    if self.consecutiveErrors >= 3 {
+                        self.setHint(L10n.speechUnavailable)
+                    }
+                    let delay = min(0.3 * pow(2.0, Double(self.consecutiveErrors - 1)), 5.0)
+                    self.scheduleRestartLocked(after: delay)
                 }
             }
         }
@@ -107,10 +182,11 @@ class SpeechRecognitionService: ObservableObject {
         restartWorkItem?.cancel()
         restartWorkItem = nil
 
-        guard isRecognitionActive,
-              let speechRecognizer,
-              speechRecognizer.isAvailable else { return }
-        beginRecognitionTaskLocked(with: speechRecognizer)
+        guard isRecognitionActive, let speechRecognizer else { return }
+        if speechRecognizer.isAvailable {
+            beginRecognitionTaskLocked(with: speechRecognizer)
+        }
+        // otherwise availabilityDidChange will resume us
     }
 
     func stopRecognition() {
@@ -129,10 +205,17 @@ class SpeechRecognitionService: ObservableObject {
     private func stopRecognitionLocked() {
         restartWorkItem?.cancel()
         restartWorkItem = nil
+        taskGeneration += 1   // orphan callbacks from the task we are cancelling
         recognitionTask?.cancel()
         recognitionTask = nil
         recognitionRequest?.endAudio()
         recognitionRequest = nil
+    }
+
+    private func setHint(_ text: String) {
+        DispatchQueue.main.async {
+            if self.statusHint != text { self.statusHint = text }
+        }
     }
 
     func appendAudioBuffer(_ sampleBuffer: CMSampleBuffer) {

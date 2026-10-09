@@ -271,6 +271,10 @@ struct RecordingView: View {
                 aiSubtitleHintPill
                     .padding(.bottom, 12)
             }
+            if settings.subtitleMode == .speech && !speechService.statusHint.isEmpty {
+                hintPill(speechService.statusHint)
+                    .padding(.bottom, 12)
+            }
 
             zoomChip
                 .opacity(showZoomChip ? 1 : 0)
@@ -315,6 +319,9 @@ struct RecordingView: View {
                 Spacer()
                 if !isRecording && settings.subtitleMode == .aiVision {
                     aiSubtitleHintPill
+                }
+                if settings.subtitleMode == .speech && !speechService.statusHint.isEmpty {
+                    hintPill(speechService.statusHint)
                 }
                 zoomChip
                     .opacity(showZoomChip ? 1 : 0)
@@ -531,13 +538,19 @@ struct RecordingView: View {
     }
 
     private var aiSubtitleHintPill: some View {
-        Text(L10n.aiSubtitleRecordingHint)
+        hintPill(L10n.aiSubtitleRecordingHint)
+    }
+
+    private func hintPill(_ text: String) -> some View {
+        Text(text)
             .font(.system(size: 12, weight: .medium))
             .foregroundColor(.white.opacity(0.9))
+            .multilineTextAlignment(.center)
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
             .background(Color.black.opacity(0.5))
             .clipShape(Capsule())
+            .padding(.horizontal, 24)
     }
 
     private var lensChips: some View {
