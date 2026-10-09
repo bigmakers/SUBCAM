@@ -25,12 +25,6 @@ struct SubtitleOverlayView: View {
         }
     }
 
-    // Danmaku animation state
-    @State private var danmakuOffsetX: CGFloat = 0
-    @State private var danmakuText: String = ""
-    @State private var danmakuYRatio: CGFloat = 0.4
-    @State private var danmakuAnimating: Bool = false
-
     private var barSwiftUIColor: Color {
         let rgb = letterboxColor.rgbComponents
         return Color(red: rgb.r, green: rgb.g, blue: rgb.b)
@@ -61,24 +55,13 @@ struct SubtitleOverlayView: View {
     private var standardOverlay: some View {
         GeometryReader { geo in
             ZStack {
-                if subtitlePosition == .danmaku {
-                    danmakuLayer(width: geo.size.width, height: geo.size.height)
-                } else if !text.isEmpty {
+                if !text.isEmpty {
                     standardSubtitleView
                 }
             }
             .frame(width: geo.size.width, height: geo.size.height)
         }
         .animation(.easeInOut(duration: 0.15), value: text.isEmpty)
-        .onChange(of: text) { _, newText in
-            if subtitlePosition == .danmaku {
-                if newText.isEmpty {
-                    danmakuAnimating = false
-                } else {
-                    startDanmakuAnimation(text: newText)
-                }
-            }
-        }
     }
 
     private var standardSubtitleView: some View {
@@ -169,27 +152,11 @@ struct SubtitleOverlayView: View {
                 }
 
                 // Subtitle text
-                if subtitlePosition == .danmaku {
-                    danmakuLayer(
-                        width: geo.size.width,
-                        height: geo.size.height,
-                        topInset: barHeight,
-                        bottomInset: barHeight
-                    )
-                } else if !text.isEmpty {
+                if !text.isEmpty {
                     cinemaScopeSubtitleView(barHeight: barHeight, totalHeight: geo.size.height)
                 }
             }
             .animation(.easeInOut(duration: 0.15), value: text.isEmpty)
-            .onChange(of: text) { _, newText in
-                if subtitlePosition == .danmaku {
-                    if newText.isEmpty {
-                        danmakuAnimating = false
-                    } else {
-                        startDanmakuAnimation(text: newText)
-                    }
-                }
-            }
         }
     }
 
@@ -221,61 +188,6 @@ struct SubtitleOverlayView: View {
                 Spacer()
                 subtitleContent
                     .frame(height: barHeight)
-            }
-        case .danmaku:
-            EmptyView()
-        }
-    }
-
-    // MARK: - Danmaku (barrage) animation
-
-    private func danmakuLayer(width: CGFloat, height: CGFloat, topInset: CGFloat = 100, bottomInset: CGFloat = 100) -> some View {
-        let usableHeight = height - topInset - bottomInset
-        let yPosition = topInset + usableHeight * danmakuYRatio
-
-        return Group {
-            if !danmakuText.isEmpty {
-                Text(danmakuText)
-                    .font(swiftUIFont(size: 20 * subtitleScale, bold: true))
-                    .foregroundColor(.white)
-                    .shadow(color: .black, radius: 3, x: 1, y: 1)
-                    .fixedSize()
-                    .offset(x: danmakuOffsetX)
-                    .position(x: width / 2, y: yPosition)
-            }
-        }
-    }
-
-    private func startDanmakuAnimation(text: String) {
-        if danmakuAnimating {
-            // Animation already running — just update text without restarting scroll
-            danmakuText = text
-            return
-        }
-
-        // New sentence — start fresh animation
-        let hash = abs(text.hashValue)
-        danmakuYRatio = CGFloat(hash % 5) / 6.0 + 0.15
-
-        danmakuAnimating = true
-        danmakuText = text
-
-        // Set start position without animation
-        var transaction = Transaction()
-        transaction.disablesAnimations = true
-        withTransaction(transaction) {
-            danmakuOffsetX = UIScreen.main.bounds.width / 2
-        }
-
-        // Start scroll on next frame
-        DispatchQueue.main.async {
-            withAnimation(.linear(duration: 3.2)) {
-                self.danmakuOffsetX = -UIScreen.main.bounds.width
-            }
-
-            // Mark animation as done after duration
-            DispatchQueue.main.asyncAfter(deadline: .now() + 3.2) {
-                self.danmakuAnimating = false
             }
         }
     }

@@ -11,7 +11,7 @@ struct SubtitleRenderer {
     // Shared CIContext for cinematic filter processing (reused for performance)
     private static let ciContext = CIContext(options: [.useSoftwareRenderer: false])
 
-    static func render(text: String, onto sourceBuffer: CVPixelBuffer, outputPool: CVPixelBufferPool?, cinemaScope: Bool = false, cinematicMode: Bool = false, monochromeMode: Bool = false, subtitleScale: CGFloat = 1.0, letterboxColor: LetterboxColor = .black, subtitlePosition: SubtitlePosition = .bottom, danmakuOffsetX: CGFloat = 0) -> CVPixelBuffer? {
+    static func render(text: String, onto sourceBuffer: CVPixelBuffer, outputPool: CVPixelBufferPool?, cinemaScope: Bool = false, cinematicMode: Bool = false, monochromeMode: Bool = false, subtitleScale: CGFloat = 1.0, letterboxColor: LetterboxColor = .black, subtitlePosition: SubtitlePosition = .bottom) -> CVPixelBuffer? {
         let width = CVPixelBufferGetWidth(sourceBuffer)
         let height = CVPixelBufferGetHeight(sourceBuffer)
 
@@ -85,9 +85,9 @@ struct SubtitleRenderer {
         let cgHeight = CGFloat(height)
 
         if cinemaScope {
-            renderCinemaScope(context: context, text: text, width: cgWidth, height: cgHeight, subtitleScale: subtitleScale, letterboxColor: letterboxColor, subtitlePosition: subtitlePosition, danmakuOffsetX: danmakuOffsetX)
+            renderCinemaScope(context: context, text: text, width: cgWidth, height: cgHeight, subtitleScale: subtitleScale, letterboxColor: letterboxColor, subtitlePosition: subtitlePosition)
         } else {
-            renderStandard(context: context, text: text, width: cgWidth, height: cgHeight, subtitleScale: subtitleScale, subtitlePosition: subtitlePosition, danmakuOffsetX: danmakuOffsetX)
+            renderStandard(context: context, text: text, width: cgWidth, height: cgHeight, subtitleScale: subtitleScale, subtitlePosition: subtitlePosition)
         }
 
         // Free tier burns a #SUBCAM watermark; Pro removes it
@@ -199,7 +199,7 @@ struct SubtitleRenderer {
     // Minimum subtitle bar height in points
     private static let minBarHeight: CGFloat = 56
 
-    private static func renderStandard(context: CGContext, text: String, width: CGFloat, height: CGFloat, subtitleScale: CGFloat = 1.0, subtitlePosition: SubtitlePosition = .bottom, danmakuOffsetX: CGFloat = 0) {
+    private static func renderStandard(context: CGContext, text: String, width: CGFloat, height: CGFloat, subtitleScale: CGFloat = 1.0, subtitlePosition: SubtitlePosition = .bottom) {
         guard !text.isEmpty else { return }
 
         let barPadding = width * 0.05
@@ -214,10 +214,10 @@ struct SubtitleRenderer {
         shadow.shadowBlurRadius = 3
 
         let paragraphStyle = NSMutableParagraphStyle()
-        paragraphStyle.alignment = subtitlePosition == .danmaku ? .left : .center
+        paragraphStyle.alignment = .center
         // Word wrapping lets long captions flow onto extra lines; truncation of the
         // last visible line is requested at draw time (.truncatesLastVisibleLine)
-        paragraphStyle.lineBreakMode = subtitlePosition == .danmaku ? .byClipping : .byWordWrapping
+        paragraphStyle.lineBreakMode = .byWordWrapping
 
         func makeString(_ size: CGFloat) -> (NSAttributedString, UIFont) {
             let font = subtitleFont.uiFont(size: size, bold: true)
@@ -244,12 +244,10 @@ struct SubtitleRenderer {
         var fontSize = baseFontSize
         var (attributedString, font) = makeString(fontSize)
         var measuredHeight = wrappedHeight(attributedString)
-        if subtitlePosition != .danmaku {
-            while measuredHeight > font.lineHeight * (maxLines + 0.2) && fontSize > baseFontSize * 0.55 {
-                fontSize = max(fontSize * 0.9, baseFontSize * 0.55)
-                (attributedString, font) = makeString(fontSize)
-                measuredHeight = wrappedHeight(attributedString)
-            }
+        while measuredHeight > font.lineHeight * (maxLines + 0.2) && fontSize > baseFontSize * 0.55 {
+            fontSize = max(fontSize * 0.9, baseFontSize * 0.55)
+            (attributedString, font) = makeString(fontSize)
+            measuredHeight = wrappedHeight(attributedString)
         }
         let textHeight = min(ceil(measuredHeight), ceil(font.lineHeight * (maxLines + 0.2)))
         let barHeight = max(height * 0.12 * subtitleScale, textHeight + fontSize, minBarHeight)
@@ -278,27 +276,12 @@ struct SubtitleRenderer {
         case .bottom:
             drawBarAndText(barY: height - barHeight)
 
-        case .danmaku:
-            // Y position based on text hash
-            let hash = abs(text.hashValue)
-            let yRatio = CGFloat(hash % 5) / 6.0 + 0.15
-            let yPos = height * yRatio
-            let textSize = attributedString.size()
-            let textRect = CGRect(
-                x: danmakuOffsetX,
-                y: yPos,
-                width: textSize.width + 20,
-                height: fontSize * 2.4
-            )
-            UIGraphicsPushContext(context)
-            attributedString.draw(in: textRect)
-            UIGraphicsPopContext()
         }
     }
 
     // MARK: - CinemaScope mode (landscape, letterbox bars, cinematic subtitle)
 
-    private static func renderCinemaScope(context: CGContext, text: String, width: CGFloat, height: CGFloat, subtitleScale: CGFloat = 1.0, letterboxColor: LetterboxColor = .black, subtitlePosition: SubtitlePosition = .bottom, danmakuOffsetX: CGFloat = 0) {
+    private static func renderCinemaScope(context: CGContext, text: String, width: CGFloat, height: CGFloat, subtitleScale: CGFloat = 1.0, letterboxColor: LetterboxColor = .black, subtitlePosition: SubtitlePosition = .bottom) {
         let referenceAspect: CGFloat = 16.0 / 9.0
         let referenceHeight = width / referenceAspect
         let cinemaScopeHeight = width / cinemaScopeRatio
@@ -335,10 +318,10 @@ struct SubtitleRenderer {
         shadow.shadowBlurRadius = 4
 
         let paragraphStyle = NSMutableParagraphStyle()
-        paragraphStyle.alignment = subtitlePosition == .danmaku ? .left : .center
+        paragraphStyle.alignment = .center
         // Word wrapping lets long captions flow onto extra lines; truncation of the
         // last visible line is requested at draw time (.truncatesLastVisibleLine)
-        paragraphStyle.lineBreakMode = subtitlePosition == .danmaku ? .byClipping : .byWordWrapping
+        paragraphStyle.lineBreakMode = .byWordWrapping
 
         let subtitleColor: UIColor = letterboxColor.usesDarkText
             ? UIColor(red: 0.1, green: 0.1, blue: 0.1, alpha: 1.0)
@@ -366,16 +349,12 @@ struct SubtitleRenderer {
         var fontSize = baseFontSize
         var (attributedString, font) = makeString(fontSize)
         var measuredHeight = wrappedHeight(attributedString)
-        if subtitlePosition != .danmaku {
-            while (measuredHeight > maxTextHeight || measuredHeight > font.lineHeight * (maxLines + 0.2)) && fontSize > baseFontSize * 0.55 {
-                fontSize = max(fontSize * 0.9, baseFontSize * 0.55)
-                (attributedString, font) = makeString(fontSize)
-                measuredHeight = wrappedHeight(attributedString)
-            }
+        while (measuredHeight > maxTextHeight || measuredHeight > font.lineHeight * (maxLines + 0.2)) && fontSize > baseFontSize * 0.55 {
+            fontSize = max(fontSize * 0.9, baseFontSize * 0.55)
+            (attributedString, font) = makeString(fontSize)
+            measuredHeight = wrappedHeight(attributedString)
         }
-        let textHeight = subtitlePosition == .danmaku
-            ? min(fontSize * 1.4, maxTextHeight)
-            : min(ceil(measuredHeight), maxTextHeight)
+        let textHeight = min(ceil(measuredHeight), maxTextHeight)
 
         switch subtitlePosition {
         case .top:
@@ -412,23 +391,6 @@ struct SubtitleRenderer {
             attributedString.draw(with: textRect, options: [.usesLineFragmentOrigin, .usesFontLeading, .truncatesLastVisibleLine], context: nil)
             UIGraphicsPopContext()
 
-        case .danmaku:
-            // Scroll within the video area between bars
-            let hash = abs(text.hashValue)
-            let videoAreaTop = barHeight
-            let videoAreaHeight = height - barHeight * 2
-            let yRatio = CGFloat(hash % 5) / 6.0 + 0.15
-            let yPos = videoAreaTop + videoAreaHeight * yRatio
-            let textSize = attributedString.size()
-            let textRect = CGRect(
-                x: danmakuOffsetX,
-                y: yPos,
-                width: textSize.width + 20,
-                height: textHeight
-            )
-            UIGraphicsPushContext(context)
-            attributedString.draw(in: textRect)
-            UIGraphicsPopContext()
         }
     }
 

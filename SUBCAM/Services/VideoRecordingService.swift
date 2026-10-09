@@ -26,13 +26,6 @@ final class VideoRecordingService: NSObject, ObservableObject, @unchecked Sendab
     var letterboxColor: LetterboxColor = .black
     var subtitlePosition: SubtitlePosition = .bottom
 
-    // Danmaku scroll state
-    private var danmakuOffsetX: CGFloat = 0
-    private var danmakuLastText: String = ""
-    private var danmakuStartTime: CFTimeInterval = 0
-    private var danmakuAnimating: Bool = false
-    private static let danmakuDuration: CFTimeInterval = 3.2
-
     private var _isRecordingInternal = false
     private var isWritingStarted = false
     private var videoWidth: Int = 0
@@ -266,33 +259,6 @@ final class VideoRecordingService: NSObject, ObservableObject, @unchecked Sendab
             subtitleText = speechService?.currentText ?? ""
         }
 
-        // Update danmaku offset
-        var currentDanmakuOffset: CGFloat = 0
-        if subtitlePosition == .danmaku && !subtitleText.isEmpty {
-            let frameWidth = CGFloat(videoWidth)
-            if danmakuAnimating {
-                // Animation in progress — just update text, don't restart scroll
-                danmakuLastText = subtitleText
-            } else {
-                // New sentence — start fresh animation
-                danmakuLastText = subtitleText
-                danmakuStartTime = CACurrentMediaTime()
-                danmakuAnimating = true
-            }
-            let elapsed = CACurrentMediaTime() - danmakuStartTime
-            let progress = CGFloat(elapsed / Self.danmakuDuration)
-            if progress >= 1.0 {
-                danmakuAnimating = false
-            }
-            // Match preview: start at right edge (frameWidth/2 offset from center),
-            // end past left edge (-frameWidth offset from center)
-            // In renderer, x is direct position, so:
-            // start = frameWidth, end = -frameWidth/2
-            currentDanmakuOffset = frameWidth * (1.0 - progress * 1.5)
-        } else if subtitlePosition == .danmaku && subtitleText.isEmpty {
-            danmakuAnimating = false
-        }
-
         // Render subtitle onto frame
         let scale = SettingsService.shared.subtitleSize.scale
         if let compositedBuffer = SubtitleRenderer.render(
@@ -304,8 +270,7 @@ final class VideoRecordingService: NSObject, ObservableObject, @unchecked Sendab
             monochromeMode: monochromeMode,
             subtitleScale: scale,
             letterboxColor: letterboxColor,
-            subtitlePosition: subtitlePosition,
-            danmakuOffsetX: currentDanmakuOffset
+            subtitlePosition: subtitlePosition
         ) {
             pixelBufferAdaptor?.append(compositedBuffer, withPresentationTime: timestamp)
         }

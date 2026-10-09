@@ -125,14 +125,12 @@ enum SubtitlePosition: String, CaseIterable {
     case top = "top"
     case center = "center"
     case bottom = "bottom"
-    case danmaku = "danmaku"
 
     var displayName: String {
         switch self {
         case .top: return isEN ? "Top" : "上部"
         case .center: return isEN ? "Center" : "中央"
         case .bottom: return isEN ? "Bottom" : "下部"
-        case .danmaku: return isEN ? "Danmaku" : "弾幕"
         }
     }
 }
