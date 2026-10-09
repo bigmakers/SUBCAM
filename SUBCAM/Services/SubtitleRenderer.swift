@@ -197,6 +197,15 @@ struct SubtitleRenderer {
     // Minimum subtitle bar height in points
     private static let minBarHeight: CGFloat = 56
 
+    /// Frame pixels per preview point. The preview aspect-fills the camera frame on a
+    /// ~19.5:9 phone, so the frame's long edge lands on the screen's long edge (852 pt
+    /// reference). Scaling by the long edge keeps portrait and landscape recordings at
+    /// the size the user saw on screen; scaling by width alone made portrait Scope
+    /// captions half size and landscape Standard captions double size.
+    private static func pointScale(width: CGFloat, height: CGFloat) -> CGFloat {
+        max(width, height) / 852.0
+    }
+
     // MARK: - Caption layout (shared by both modes)
 
     private struct LayoutKey: Equatable {
@@ -277,7 +286,7 @@ struct SubtitleRenderer {
 
         let barPadding = width * 0.05
         let maxTextWidth = width - barPadding * 2
-        let baseFontSize = 20.0 * subtitleScale * (width / 390.0)  // Scale relative to iPhone 14 Pro width
+        let baseFontSize = 20.0 * subtitleScale * pointScale(width: width, height: height)
         let subtitleFont = SettingsService.shared.subtitleFont
 
         let shadow = NSShadow()
@@ -303,7 +312,7 @@ struct SubtitleRenderer {
             ]
             return (NSAttributedString(string: text, attributes: attributes), font)
         }
-        let barHeight = max(height * 0.12 * subtitleScale, layout.textHeight + layout.fontSize, minBarHeight)
+        let barHeight = max(layout.textHeight + layout.fontSize, minBarHeight)
 
         let barY: CGFloat
         switch subtitlePosition {
@@ -323,7 +332,8 @@ struct SubtitleRenderer {
         let referenceAspect: CGFloat = 16.0 / 9.0
         let referenceHeight = width / referenceAspect
         let cinemaScopeHeight = width / cinemaScopeRatio
-        let barHeight = max((referenceHeight - cinemaScopeHeight) / 2, minBarHeight)
+        // Same 44 pt floor as the preview's letterbox, expressed in frame pixels
+        let barHeight = max((referenceHeight - cinemaScopeHeight) / 2, 44 * pointScale(width: width, height: height))
 
         let rgb = letterboxColor.rgbComponents
         let barUIColor = UIColor(red: rgb.r, green: rgb.g, blue: rgb.b, alpha: 1.0)
@@ -336,8 +346,8 @@ struct SubtitleRenderer {
         // Inside a bar the text must fit the bar (two lines); centered over the picture
         // it may use the base size and up to three lines. The preview behaves the same.
         let inBar = subtitlePosition == .top || subtitlePosition == .bottom
-        let scaledFontSize = 18.0 * subtitleScale * (width / 844.0)  // Scale relative to iPhone 14 Pro landscape width
-        let baseFontSize = inBar ? min(scaledFontSize, barHeight * 0.55) : scaledFontSize
+        let scaledFontSize = 18.0 * subtitleScale * pointScale(width: width, height: height)
+        let baseFontSize = inBar ? min(scaledFontSize, barHeight * 0.45) : scaledFontSize   // same bar cap as the preview
         let subtitleFont = SettingsService.shared.subtitleFont
         let textPadding = width * 0.1
         let maxTextWidth = width - textPadding * 2
