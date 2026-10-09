@@ -18,6 +18,7 @@
 		AA000009 /* SubtitleRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000009 /* SubtitleRenderer.swift */; };
 		AA00000A /* PermissionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB00000A /* PermissionManager.swift */; };
 		AA00000B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AB00000B /* Assets.xcassets */; };
+		AA00001B /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = AB00001B /* PrivacyInfo.xcprivacy */; };
 		AA00000C /* SettingsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB00000E /* SettingsService.swift */; };
 		AA00000D /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB00000F /* SettingsView.swift */; };
 		AA000010 /* StoreService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000010 /* StoreService.swift */; };
@@ -46,6 +47,7 @@
 		AB00000A /* PermissionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionManager.swift; sourceTree = "<group>"; };
 		AB00000B /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		AB00000C /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		AB00001B /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		AB00000D /* SUBCAM.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SUBCAM.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		AB00000E /* SettingsService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsService.swift; sourceTree = "<group>"; };
 		AB00000F /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
@@ -86,6 +88,7 @@
 			children = (
 				AB000001 /* SUBCAMApp.swift */,
 				AB00000C /* Info.plist */,
+				AB00001B /* PrivacyInfo.xcprivacy */,
 				AB00000B /* Assets.xcassets */,
 				AD000003 /* Views */,
 				AD000004 /* Services */,
@@ -212,6 +215,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				AA00000B /* Assets.xcassets in Resources */,
+				AA00001B /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

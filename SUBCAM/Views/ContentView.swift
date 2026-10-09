@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ContentView: View {
     @StateObject private var permissionManager = PermissionManager()
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         Group {
@@ -13,6 +14,10 @@ struct ContentView: View {
         }
         .onAppear {
             permissionManager.checkPermissions()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            // Re-evaluate after the user comes back from the Settings app
+            if phase == .active { permissionManager.checkPermissions() }
         }
     }
 }
@@ -70,6 +75,23 @@ struct PermissionRequestView: View {
                         .cornerRadius(12)
                 }
                 .padding(.horizontal, 40)
+
+                if permissionManager.anyDenied {
+                    VStack(spacing: 12) {
+                        Text(L10n.permissionDeniedHint)
+                            .font(.footnote)
+                            .foregroundColor(.gray)
+                            .multilineTextAlignment(.center)
+                        Button(L10n.openSettings) {
+                            if let url = URL(string: UIApplication.openSettingsURLString) {
+                                UIApplication.shared.open(url)
+                            }
+                        }
+                        .font(.headline)
+                        .foregroundColor(.white)
+                    }
+                    .padding(.horizontal, 40)
+                }
             }
         }
     }

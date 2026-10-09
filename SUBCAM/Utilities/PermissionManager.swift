@@ -13,6 +13,15 @@ class PermissionManager: ObservableObject {
         cameraAuthorized && microphoneAuthorized && speechAuthorized
     }
 
+    /// True once the user has declined something; the system prompt won't show again
+    var anyDenied: Bool {
+        let camera = AVCaptureDevice.authorizationStatus(for: .video)
+        let mic = AVCaptureDevice.authorizationStatus(for: .audio)
+        let speech = SFSpeechRecognizer.authorizationStatus()
+        return [camera, mic].contains { $0 == .denied || $0 == .restricted }
+            || speech == .denied || speech == .restricted
+    }
+
     func checkPermissions() {
         cameraAuthorized = AVCaptureDevice.authorizationStatus(for: .video) == .authorized
         microphoneAuthorized = AVCaptureDevice.authorizationStatus(for: .audio) == .authorized

@@ -25,11 +25,22 @@ struct RecordingView: View {
 
     @State private var lastThumbnail: UIImage?
     @State private var showStyleDrawer = false
+    @State private var isFinishingRecording = false
+    @State private var showRecordingErrorAlert = false
+    @State private var showAIConsent = false
+    @State private var consentRevertsToSpeech = false
+    @Environment(\.scenePhase) private var scenePhase
 
     /// Non-essential chrome fades out while recording, camera-app style.
     private var isRecording: Bool { recordingService.isRecording }
 
     var body: some View {
+        stage6(stage5(stage4(stage3(stage2(stage1(content))))))
+    }
+
+    // The modifier chain is applied in stages: one long chain on the ZStack makes
+    // the SwiftUI type checker give up ("unable to type-check in reasonable time").
+    private var content: some View {
         ZStack {
             // Camera preview
             CameraPreviewView(
@@ -158,6 +169,10 @@ struct RecordingView: View {
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
+    }
+
+    private func stage1<V: View>(_ view: V) -> some View {
+        view
         .onAppear {
             setupServices()
         }
@@ -175,6 +190,10 @@ struct RecordingView: View {
             translationService.clear()
             recordingService.speechTranslationActive = translationActive
         }
+    }
+
+    private func stage2<V: View>(_ view: V) -> some View {
+        view
         .onChange(of: speechService.displayText) { _, newText in
             guard translationActive else { return }
             translationService.submit(newText)
@@ -193,6 +212,10 @@ struct RecordingView: View {
             guard !recordingService.isRecording else { return }
             recordingService.monochromeMode = newValue
         }
+    }
+
+    private func stage3<V: View>(_ view: V) -> some View {
+        view
         .onChange(of: settings.letterboxColor) { _, newValue in
             recordingService.letterboxColor = newValue
         }
@@ -209,8 +232,46 @@ struct RecordingView: View {
             } else {
                 speechService.stopRecognition()
                 translationService.clear()
+                if settings.aiProvider.sendsImagesOffDevice && !settings.aiCloudConsent {
+                    consentRevertsToSpeech = true
+                    showAIConsent = true
+                }
             }
         }
+        .onChange(of: scenePhase) { _, phase in
+            // Leaving the foreground (home, lock, app switcher) ends the recording cleanly
+            if phase != .active, recordingService.isRecording { stopRecordingAndSave() }
+        }
+    }
+
+    private func stage4<V: View>(_ view: V) -> some View {
+        view
+        .onChange(of: cameraService.interruptionCount) { _, _ in
+            if recordingService.isRecording { stopRecordingAndSave() }
+        }
+        .onChange(of: recordingService.lastError) { _, error in
+            guard error != nil else { return }
+            cameraService.isRecordingActive = false
+            if settings.subtitleMode == .aiVision { aiVisionService.stop() }
+            showRecordingErrorAlert = true
+        }
+        .alert(L10n.recordingFailedTitle, isPresented: $showRecordingErrorAlert) {
+            Button("OK") { recordingService.lastError = nil }
+        } message: {
+            Text(L10n.recordingFailedMessage)
+        }
+        .alert(L10n.aiConsentTitle, isPresented: $showAIConsent) {
+            Button(L10n.aiConsentAgree) { settings.aiCloudConsent = true }
+            Button(L10n.cancel, role: .cancel) {
+                if consentRevertsToSpeech { settings.subtitleMode = .speech }
+            }
+        } message: {
+            Text(L10n.aiConsentMessage(settings.aiProvider.displayName))
+        }
+    }
+
+    private func stage5<V: View>(_ view: V) -> some View {
+        view
         .onChange(of: settings.aiProvider) { _, _ in
             aiVisionService.updateProvider()
         }
@@ -224,8 +285,12 @@ struct RecordingView: View {
         .alert(savedSuccess ? L10n.saveComplete : L10n.saveFailed, isPresented: $showSavedAlert) {
             Button("OK") {}
         } message: {
-            Text(savedSuccess ? L10n.videoSavedMessage : L10n.videoSaveFailedMessage)
+            Text(savedSuccess ? L10n.videoSavedMessage : L10n.videoKeptMessage)
         }
+    }
+
+    private func stage6<V: View>(_ view: V) -> some View {
+        view
         .sheet(isPresented: $showSettings) {
             SettingsView(
                 onVideoQualityChanged: { quality in
@@ -239,6 +304,7 @@ struct RecordingView: View {
                 }
             )
         }
+    
     }
 
     // MARK: - Portrait controls
@@ -525,6 +591,7 @@ struct RecordingView: View {
                     .animation(.spring(response: 0.3, dampingFraction: 0.7), value: recordingService.isRecording)
             }
         }
+        .disabled(isFinishingRecording)
     }
 
     private var zoomChip: some View {
@@ -744,14 +811,19 @@ struct RecordingView: View {
         if settings.subtitleMode == .speech {
             speechService.startRecognition()
         }
+
+        // Re-save anything a crash or a failed Photos write left in Documents
+        Task { await VideoRecordingService.recoverLeftoverRecordings() }
     }
 
     private func teardownServices() async {
         // Stop recording first (while subtitles are still active)
         if recordingService.isRecording,
            let url = await recordingService.stopRecording() {
-            _ = await VideoRecordingService.saveToPhotoLibrary(url: url)
-            try? FileManager.default.removeItem(at: url)
+            // On failure the file stays for recoverLeftoverRecordings()
+            if await VideoRecordingService.saveToPhotoLibrary(url: url) {
+                try? FileManager.default.removeItem(at: url)
+            }
         }
 
         // Then clear subtitle services
@@ -762,66 +834,84 @@ struct RecordingView: View {
 
     private func toggleRecording() {
         if recordingService.isRecording {
-            UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
-            Task {
-                // Unlock capture connection rotation
-                cameraService.isRecordingActive = false
+            stopRecordingAndSave()
+        } else {
+            startRecording()
+        }
+    }
 
-                // Stop recording first (while subtitles still active), then clear subtitles
-                if let url = await recordingService.stopRecording() {
-                    let success = await VideoRecordingService.saveToPhotoLibrary(url: url)
-                    if success {
-                        // Build the shutter-row thumbnail from the temp file before
-                        // it is deleted — the app has add-only photo access, so the
-                        // saved asset can never be read back from the library.
-                        let thumbnail = await makeThumbnail(from: url)
-                        await MainActor.run {
-                            if let thumbnail {
-                                withAnimation(.easeOut(duration: 0.2)) {
-                                    lastThumbnail = thumbnail
-                                }
-                            }
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                showSavedToast = true
-                            }
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) {
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                    showSavedToast = false
-                                }
-                            }
-                        }
-                    } else {
-                        await MainActor.run {
-                            savedSuccess = false
-                            showSavedAlert = true
-                        }
-                    }
-                    try? FileManager.default.removeItem(at: url)
-                }
-                // Speech recognition keeps running so the preview caption stays live.
-                if settings.subtitleMode == .aiVision {
-                    aiVisionService.stop()
-                }
+    private func startRecording() {
+        guard !isFinishingRecording, !recordingService.isRecording else { return }
+        if settings.subtitleMode == .aiVision,
+           settings.aiProvider.sendsImagesOffDevice,
+           !settings.aiCloudConsent {
+            consentRevertsToSpeech = false
+            showAIConsent = true
+            return
+        }
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        // Lock capture connection rotation to prevent buffer dimension changes
+        cameraService.isRecordingActive = true
+
+        closeStyleDrawer()
+
+        recordingService.letterboxColor = settings.letterboxColor
+        recordingService.subtitleMode = settings.subtitleMode
+        recordingService.speechTranslationActive = translationActive
+        recordingService.startRecording()
+        if settings.subtitleMode == .speech {
+            // Already running from the live preview in the normal case
+            if !speechService.isRecognizing {
+                speechService.startRecognition()
             }
         } else {
-            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-            // Lock capture connection rotation to prevent buffer dimension changes
-            cameraService.isRecordingActive = true
+            aiVisionService.start()
+        }
+    }
 
-            closeStyleDrawer()
+    /// Finishes the writer and saves to Photos. The shutter stays disabled until the
+    /// save completes; on failure the file is kept for recoverLeftoverRecordings().
+    private func stopRecordingAndSave() {
+        guard !isFinishingRecording else { return }
+        isFinishingRecording = true
+        UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
+        Task {
+            // Unlock capture connection rotation
+            cameraService.isRecordingActive = false
 
-            recordingService.letterboxColor = settings.letterboxColor
-            recordingService.subtitleMode = settings.subtitleMode
-            recordingService.speechTranslationActive = translationActive
-            recordingService.startRecording()
-            if settings.subtitleMode == .speech {
-                // Already running from the live preview in the normal case
-                if !speechService.isRecognizing {
-                    speechService.startRecognition()
+            if let url = await recordingService.stopRecording() {
+                if await VideoRecordingService.saveToPhotoLibrary(url: url) {
+                    // Build the shutter-row thumbnail from the temp file before it is
+                    // deleted — with add-only photo access the asset can't be read back
+                    let thumbnail = await makeThumbnail(from: url)
+                    try? FileManager.default.removeItem(at: url)
+                    await MainActor.run {
+                        if let thumbnail {
+                            withAnimation(.easeOut(duration: 0.2)) {
+                                lastThumbnail = thumbnail
+                            }
+                        }
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            showSavedToast = true
+                        }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                showSavedToast = false
+                            }
+                        }
+                    }
+                } else {
+                    await MainActor.run {
+                        savedSuccess = false
+                        showSavedAlert = true
+                    }
                 }
-            } else {
-                aiVisionService.start()
             }
+            // Speech recognition keeps running so the preview caption stays live.
+            if settings.subtitleMode == .aiVision {
+                aiVisionService.stop()
+            }
+            await MainActor.run { isFinishingRecording = false }
         }
     }
 

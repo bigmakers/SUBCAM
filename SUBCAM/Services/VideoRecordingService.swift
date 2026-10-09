@@ -5,6 +5,8 @@ import UIKit
 final class VideoRecordingService: NSObject, ObservableObject, @unchecked Sendable {
     @Published var isRecording = false
     @Published var recordingDuration: TimeInterval = 0
+    /// Set when a recording ends because the writer failed (disk full, media reset, ...)
+    @Published var lastError: String?
 
     private let writerQueue = DispatchQueue(label: "com.subcam.videoRecording.writerQueue")
     private var assetWriter: AVAssetWriter?
@@ -34,6 +36,25 @@ final class VideoRecordingService: NSObject, ObservableObject, @unchecked Sendab
     private var isRecordingInternal: Bool {
         get { _isRecordingInternal }
         set { _isRecordingInternal = newValue }
+    }
+
+    /// Abandons the current recording after a mid-recording writer failure
+    private func failRecordingLocked(_ reason: String) {
+        print("[Recording] failed: \(reason)")
+        let abandonedURL = outputURL
+        if let writer = assetWriter, writer.status == .writing {
+            writer.cancelWriting()
+        }
+        resetWriterStateLocked()
+        if let abandonedURL {
+            try? FileManager.default.removeItem(at: abandonedURL)
+        }
+        DispatchQueue.main.async {
+            self.durationTimer?.invalidate()
+            self.durationTimer = nil
+            self.isRecording = false
+            self.lastError = reason
+        }
     }
 
     private func resetWriterStateLocked() {
@@ -133,7 +154,12 @@ final class VideoRecordingService: NSObject, ObservableObject, @unchecked Sendab
                         }
 
                         self.resetWriterStateLocked()
-                        DispatchQueue.main.async { self.isRecording = false }
+                        DispatchQueue.main.async {
+                            self.isRecording = false
+                            if !completed {
+                                self.lastError = writer.error?.localizedDescription ?? "finishWriting failed"
+                            }
+                        }
                         continuation.resume(returning: completed ? finishedURL : nil)
                     }
                 }
@@ -245,6 +271,10 @@ final class VideoRecordingService: NSObject, ObservableObject, @unchecked Sendab
             return
         }
 
+        if writer.status == .failed {
+            failRecordingLocked(writer.error?.localizedDescription ?? "video writer failed")
+            return
+        }
         guard writer.status == .writing,
               let videoInput,
               videoInput.isReadyForMoreMediaData else { return }
@@ -272,17 +302,42 @@ final class VideoRecordingService: NSObject, ObservableObject, @unchecked Sendab
             letterboxColor: letterboxColor,
             subtitlePosition: subtitlePosition
         ) {
-            pixelBufferAdaptor?.append(compositedBuffer, withPresentationTime: timestamp)
+            if pixelBufferAdaptor?.append(compositedBuffer, withPresentationTime: timestamp) == false,
+               writer.status == .failed {
+                failRecordingLocked(writer.error?.localizedDescription ?? "video append failed")
+            }
         }
     }
 
     func appendAudioBuffer(_ sampleBuffer: CMSampleBuffer) {
         writerQueue.sync {
-            guard isRecordingInternal, isWritingStarted,
-                  let writer = assetWriter, writer.status == .writing,
+            guard isRecordingInternal, isWritingStarted, let writer = assetWriter else { return }
+            if writer.status == .failed {
+                failRecordingLocked(writer.error?.localizedDescription ?? "audio writer failed")
+                return
+            }
+            guard writer.status == .writing,
                   let audioInput, audioInput.isReadyForMoreMediaData else { return }
 
-            audioInput.append(sampleBuffer)
+            if !audioInput.append(sampleBuffer), writer.status == .failed {
+                failRecordingLocked(writer.error?.localizedDescription ?? "audio append failed")
+            }
+        }
+    }
+
+    /// Recordings are written to Documents. A crash, a force-quit or a failed Photos
+    /// write can leave files behind; re-save them on launch and drop stale leftovers
+    /// that still can't be saved after a week.
+    static func recoverLeftoverRecordings() async {
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        guard let files = try? FileManager.default.contentsOfDirectory(at: docs, includingPropertiesForKeys: [.contentModificationDateKey]) else { return }
+        for url in files where url.lastPathComponent.hasPrefix("SUBCAM_") && url.pathExtension == "mov" {
+            if await saveToPhotoLibrary(url: url) {
+                try? FileManager.default.removeItem(at: url)
+            } else if let modified = try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,
+                      Date().timeIntervalSince(modified) > 7 * 24 * 3600 {
+                try? FileManager.default.removeItem(at: url)
+            }
         }
     }
 

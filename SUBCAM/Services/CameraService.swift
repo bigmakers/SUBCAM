@@ -29,7 +29,17 @@ class CameraService: NSObject, ObservableObject {
     /// When true, the capture connection's rotation angle is frozen
     /// (prevents buffer dimension changes that break AVAssetWriter mid-recording).
     /// Preview and UI orientation still update freely.
-    var isRecordingActive = false
+    var isRecordingActive = false {
+        didSet {
+            // Orientation changes made while recording were only applied to the preview;
+            // bring the capture connection back in line once the recording ends
+            if oldValue && !isRecordingActive { updateVideoOrientation() }
+        }
+    }
+
+    /// Bumped on capture-session interruption or runtime error so the recording
+    /// screen can end a recording in progress
+    @Published var interruptionCount = 0
 
     private var cameraDevice: AVCaptureDevice?
     private var currentCameraInput: AVCaptureDeviceInput?
@@ -103,6 +113,16 @@ class CameraService: NSObject, ObservableObject {
             name: .AVCaptureDeviceSubjectAreaDidChange,
             object: nil
         )
+
+        // Phone calls, Control Center camera use, multitasking and media-server resets
+        for name in [AVCaptureSession.wasInterruptedNotification, AVCaptureSession.runtimeErrorNotification] {
+            NotificationCenter.default.addObserver(self, selector: #selector(sessionWasInterrupted), name: name, object: captureSession)
+        }
+    }
+
+    @objc private func sessionWasInterrupted(_ notification: Notification) {
+        print("[Camera] session interrupted/error: \(notification.name.rawValue) \(notification.userInfo ?? [:])")
+        DispatchQueue.main.async { self.interruptionCount += 1 }
     }
 
     @objc private func deviceOrientationDidChange() {
@@ -159,8 +179,13 @@ class CameraService: NSObject, ObservableObject {
     // MARK: - Video Quality
 
     func applyVideoQuality(_ quality: VideoQuality) {
+        let preset = quality.sessionPreset
         captureSession.beginConfiguration()
-        captureSession.sessionPreset = quality.sessionPreset
+        if captureSession.canSetSessionPreset(preset) {
+            captureSession.sessionPreset = preset
+        } else {
+            print("[Camera] preset \(preset.rawValue) not supported on this device/lens")
+        }
         captureSession.commitConfiguration()
         applyFrameRate(quality.frameRate)
     }
@@ -190,8 +215,14 @@ class CameraService: NSObject, ObservableObject {
             if let format = bestFormat {
                 device.activeFormat = format
             }
-            device.activeVideoMinFrameDuration = CMTime(value: 1, timescale: CMTimeScale(fps))
-            device.activeVideoMaxFrameDuration = CMTime(value: 1, timescale: CMTimeScale(fps))
+            // A frame duration outside the active format's range throws an ObjC
+            // exception, so clamp to what the format actually supports
+            let ranges = device.activeFormat.videoSupportedFrameRateRanges
+            let maxSupported = ranges.map(\.maxFrameRate).max() ?? fps
+            let minSupported = ranges.map(\.minFrameRate).min() ?? fps
+            let target = min(max(fps, minSupported), maxSupported)
+            device.activeVideoMinFrameDuration = CMTime(value: 1, timescale: CMTimeScale(target))
+            device.activeVideoMaxFrameDuration = CMTime(value: 1, timescale: CMTimeScale(target))
             device.unlockForConfiguration()
         } catch {
             print("Failed to set frame rate: \(error)")
@@ -426,6 +457,8 @@ class CameraService: NSObject, ObservableObject {
         guard captureSession.isRunning else { return }
         NotificationCenter.default.removeObserver(self, name: UIDevice.orientationDidChangeNotification, object: nil)
         NotificationCenter.default.removeObserver(self, name: .AVCaptureDeviceSubjectAreaDidChange, object: nil)
+        NotificationCenter.default.removeObserver(self, name: AVCaptureSession.wasInterruptedNotification, object: captureSession)
+        NotificationCenter.default.removeObserver(self, name: AVCaptureSession.runtimeErrorNotification, object: captureSession)
         UIDevice.current.endGeneratingDeviceOrientationNotifications()
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             self?.captureSession.stopRunning()

@@ -47,8 +47,9 @@ struct ClaudeVisionProvider: VisionAIProvider {
             throw VisionAIError.invalidResponse
         }
         guard httpResponse.statusCode == 200 else {
-            let errorMsg = String(data: data, encoding: .utf8) ?? "Unknown error"
-            throw VisionAIError.apiError("Claude API \(httpResponse.statusCode): \(errorMsg)")
+            // Response bodies stay out of the caption: whatever we throw gets burned into the video
+            print("[ClaudeVisionProvider] HTTP \(httpResponse.statusCode): \(String(data: data, encoding: .utf8)?.prefix(500) ?? "")")
+            throw VisionAIError.apiError("Claude API \(httpResponse.statusCode)")
         }
 
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],

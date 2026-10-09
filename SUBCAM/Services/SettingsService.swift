@@ -339,6 +339,11 @@ enum AIProvider: String, CaseIterable {
         self != .apple
     }
 
+    /// Everything except Apple Intelligence uploads camera frames to a server
+    var sendsImagesOffDevice: Bool {
+        self != .apple
+    }
+
     /// Model used when the user hasn't picked one
     var defaultModel: String {
         switch self {
@@ -484,6 +489,24 @@ enum L10n {
     static var aiModelNote: String { isEN ? "You can also enter any model ID directly. Leave empty to use the default." : "モデルIDを直接入力することもできます。空欄の場合は既定のモデルを使用します。" }
 
     // Alerts
+    // Recording failures / permissions / AI consent / links
+    static var recordingFailedTitle: String { isEN ? "Recording Failed" : "録画に失敗しました" }
+    static var recordingFailedMessage: String { isEN ? "The video could not be written. Check free storage space and try again." : "動画を書き込めませんでした。空き容量を確認してもう一度お試しください" }
+    static var videoKeptMessage: String { isEN ? "The video couldn't be added to Photos. It has been kept and will be saved again next time SUBCAM opens." : "写真に保存できませんでした。動画は保持され、次回起動時にもう一度保存を試みます" }
+    static var openSettings: String { isEN ? "Open Settings" : "設定を開く" }
+    static var permissionDeniedHint: String { isEN ? "Some permissions were declined. You can allow them in the Settings app." : "一部の権限が許可されていません。設定アプリから許可できます" }
+    static var aiConsentTitle: String { isEN ? "Send camera images to an AI service?" : "カメラ画像をAIサービスに送信しますか？" }
+    static func aiConsentMessage(_ provider: String) -> String {
+        isEN
+            ? "While AI captions are on, still images from the camera are sent to \(provider) using your own API key, about every 2 seconds during recording. Nothing is sent to SUBCAM's developer. See the privacy policy for details."
+            : "AI字幕がオンの間、録画中は約2秒ごとにカメラの静止画が、あなたのAPIキーを使って \(provider) に送信されます。開発者には送信されません。詳しくはプライバシーポリシーをご覧ください"
+    }
+    static var aiConsentAgree: String { isEN ? "Agree and Continue" : "同意して続ける" }
+    static var cancel: String { isEN ? "Cancel" : "キャンセル" }
+    static var privacyPolicy: String { isEN ? "Privacy Policy" : "プライバシーポリシー" }
+    static var supportPage: String { isEN ? "Support" : "サポート" }
+    static var about: String { isEN ? "About" : "このアプリについて" }
+
     static var saveComplete: String { isEN ? "Saved" : "保存完了" }
     static var saveFailed: String { isEN ? "Save Failed" : "保存失敗" }
     static var videoSavedMessage: String { isEN ? "Video saved to Photo Library" : "ビデオがフォトライブラリに保存されました" }
@@ -594,6 +617,11 @@ class SettingsService: ObservableObject {
         aiModels[provider.rawValue] = model
     }
 
+    /// User acknowledged that AI captions upload camera images to the chosen provider
+    @Published var aiCloudConsent: Bool {
+        didSet { UserDefaults.standard.set(aiCloudConsent, forKey: "aiCloudConsent") }
+    }
+
     @Published var isProUnlocked: Bool {
         didSet { UserDefaults.standard.set(isProUnlocked, forKey: "isProUnlocked") }
     }
@@ -657,6 +685,7 @@ class SettingsService: ObservableObject {
 
         self.localLLMEndpoint = UserDefaults.standard.string(forKey: "localLLMEndpoint") ?? ""
         self.aiModels = UserDefaults.standard.dictionary(forKey: "aiModels") as? [String: String] ?? [:]
+        self.aiCloudConsent = UserDefaults.standard.bool(forKey: "aiCloudConsent")
 
         self.isProUnlocked = UserDefaults.standard.object(forKey: "isProUnlocked") as? Bool ?? false
     }

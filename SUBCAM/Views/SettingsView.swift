@@ -333,6 +333,12 @@ struct SettingsView: View {
                         }
                     }
                 }
+
+                // MARK: - About
+                Section(L10n.about) {
+                    Link(L10n.privacyPolicy, destination: URL(string: "https://bigmakers.github.io/SUBCAM/privacy-policy.html")!)
+                    Link(L10n.supportPage, destination: URL(string: "https://bigmakers.github.io/SUBCAM/support.html")!)
+                }
             }
             .onAppear { loadAPIKeyState() }
             .navigationTitle(L10n.settings)

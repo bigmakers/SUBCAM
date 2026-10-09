@@ -14,7 +14,25 @@ class StoreService: ObservableObject {
 
     private init() {
         transactionListener = listenForTransactions()
-        Task { await loadProducts() }
+        Task {
+            await loadProducts()
+            await refreshEntitlements()
+        }
+    }
+
+    /// Verified current entitlements are the only source of truth for Pro. Runs at
+    /// launch, after purchases/restores, and whenever StoreKit reports a change, so
+    /// refunds and revocations turn Pro off and reinstalls turn it back on.
+    func refreshEntitlements() async {
+        var isPro = false
+        for await result in Transaction.currentEntitlements {
+            if let transaction = try? checkVerified(result),
+               transaction.productID == StoreService.proProductId,
+               transaction.revocationDate == nil {
+                isPro = true
+            }
+        }
+        SettingsService.shared.isProUnlocked = isPro
     }
 
     deinit {
@@ -47,6 +65,7 @@ class StoreService: ObservableObject {
                 let transaction = try checkVerified(verification)
                 await transaction.finish()
                 SettingsService.shared.isProUnlocked = true
+                await refreshEntitlements()
 
             case .userCancelled:
                 break
@@ -68,14 +87,10 @@ class StoreService: ObservableObject {
         isPurchasing = true
         errorMessage = nil
 
-        for await result in Transaction.currentEntitlements {
-            if let transaction = try? checkVerified(result) {
-                if transaction.productID == StoreService.proProductId {
-                    SettingsService.shared.isProUnlocked = true
-                    await transaction.finish()
-                }
-            }
-        }
+        // Ask the App Store for the account's transactions first; currentEntitlements
+        // alone only reflects what this device already knows about
+        try? await AppStore.sync()
+        await refreshEntitlements()
 
         if !SettingsService.shared.isProUnlocked {
             errorMessage = "復元できる購入がありません"
@@ -88,12 +103,10 @@ class StoreService: ObservableObject {
         Task.detached {
             for await result in Transaction.updates {
                 if case .verified(let transaction) = result {
-                    if transaction.productID == "com.subcam.app.pro" {
-                        await MainActor.run {
-                            SettingsService.shared.isProUnlocked = true
-                        }
-                    }
                     await transaction.finish()
+                    if transaction.productID == StoreService.proProductId {
+                        await StoreService.shared.refreshEntitlements()
+                    }
                 }
             }
         }
