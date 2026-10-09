@@ -195,13 +195,14 @@ struct SubtitleOverlayView: View {
 
     @ViewBuilder
     private func cinemaScopeSubtitleView(barHeight: CGFloat, totalHeight: CGFloat) -> some View {
+        let inBar = subtitlePosition == .top || subtitlePosition == .bottom
         let subtitleContent = Text(text)
-            .font(swiftUIFont(size: min(18 * subtitleScale, barHeight * 0.45), bold: false))
+            .font(swiftUIFont(size: inBar ? min(18 * subtitleScale, barHeight * 0.45) : 18 * subtitleScale, bold: false))
             .foregroundColor(subtitleForeground)
             .shadow(color: subtitleShadowColor, radius: 4, x: 1, y: 1)
             .tracking(1.5)
             .multilineTextAlignment(.center)
-            .lineLimit(2)
+            .lineLimit(inBar ? 2 : 3)
             .minimumScaleFactor(0.55)
             .truncationMode(.tail)
             .padding(.horizontal, 40)

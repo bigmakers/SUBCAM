@@ -215,7 +215,9 @@ struct SubtitleRenderer {
 
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.alignment = subtitlePosition == .danmaku ? .left : .center
-        paragraphStyle.lineBreakMode = subtitlePosition == .danmaku ? .byClipping : .byTruncatingTail
+        // Word wrapping lets long captions flow onto extra lines; truncation of the
+        // last visible line is requested at draw time (.truncatesLastVisibleLine)
+        paragraphStyle.lineBreakMode = subtitlePosition == .danmaku ? .byClipping : .byWordWrapping
 
         func makeString(_ size: CGFloat) -> (NSAttributedString, UIFont) {
             let font = subtitleFont.uiFont(size: size, bold: true)
@@ -262,7 +264,7 @@ struct SubtitleRenderer {
                 height: textHeight
             )
             UIGraphicsPushContext(context)
-            attributedString.draw(in: textRect)
+            attributedString.draw(with: textRect, options: [.usesLineFragmentOrigin, .usesFontLeading, .truncatesLastVisibleLine], context: nil)
             UIGraphicsPopContext()
         }
 
@@ -312,12 +314,16 @@ struct SubtitleRenderer {
 
         // Fit inside the bar: start at the base size, wrap up to two lines, and
         // shrink down to 55% before truncating. Mirrors the preview's lineLimit(2).
-        let maxFontSize = barHeight * 0.55
-        let baseFontSize = min(18.0 * subtitleScale * (width / 844.0), maxFontSize)  // Scale relative to iPhone 14 Pro landscape width
+        // Inside a bar the text must fit the bar; centered over the picture it may use
+        // the base size and up to three lines (the preview behaves the same way).
+        let inBar = subtitlePosition == .top || subtitlePosition == .bottom
+        let scaledFontSize = 18.0 * subtitleScale * (width / 844.0)  // Scale relative to iPhone 14 Pro landscape width
+        let baseFontSize = inBar ? min(scaledFontSize, barHeight * 0.55) : scaledFontSize
         let subtitleFont = SettingsService.shared.subtitleFont
         let textPadding = width * 0.1
         let maxTextWidth = width - textPadding * 2
-        let maxTextHeight = barHeight * 0.85
+        let maxLines: CGFloat = inBar ? 2 : 3
+        let maxTextHeight = inBar ? barHeight * 0.85 : (height - barHeight * 2) * 0.8
 
         let shadow = NSShadow()
         if letterboxColor.usesDarkText {
@@ -330,7 +336,9 @@ struct SubtitleRenderer {
 
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.alignment = subtitlePosition == .danmaku ? .left : .center
-        paragraphStyle.lineBreakMode = subtitlePosition == .danmaku ? .byClipping : .byTruncatingTail
+        // Word wrapping lets long captions flow onto extra lines; truncation of the
+        // last visible line is requested at draw time (.truncatesLastVisibleLine)
+        paragraphStyle.lineBreakMode = subtitlePosition == .danmaku ? .byClipping : .byWordWrapping
 
         let subtitleColor: UIColor = letterboxColor.usesDarkText
             ? UIColor(red: 0.1, green: 0.1, blue: 0.1, alpha: 1.0)
@@ -359,7 +367,7 @@ struct SubtitleRenderer {
         var (attributedString, font) = makeString(fontSize)
         var measuredHeight = wrappedHeight(attributedString)
         if subtitlePosition != .danmaku {
-            while (measuredHeight > maxTextHeight || measuredHeight > font.lineHeight * 2.2) && fontSize > baseFontSize * 0.55 {
+            while (measuredHeight > maxTextHeight || measuredHeight > font.lineHeight * (maxLines + 0.2)) && fontSize > baseFontSize * 0.55 {
                 fontSize = max(fontSize * 0.9, baseFontSize * 0.55)
                 (attributedString, font) = makeString(fontSize)
                 measuredHeight = wrappedHeight(attributedString)
@@ -378,7 +386,7 @@ struct SubtitleRenderer {
                 height: textHeight
             )
             UIGraphicsPushContext(context)
-            attributedString.draw(in: textRect)
+            attributedString.draw(with: textRect, options: [.usesLineFragmentOrigin, .usesFontLeading, .truncatesLastVisibleLine], context: nil)
             UIGraphicsPopContext()
 
         case .center:
@@ -389,7 +397,7 @@ struct SubtitleRenderer {
                 height: textHeight
             )
             UIGraphicsPushContext(context)
-            attributedString.draw(in: textRect)
+            attributedString.draw(with: textRect, options: [.usesLineFragmentOrigin, .usesFontLeading, .truncatesLastVisibleLine], context: nil)
             UIGraphicsPopContext()
 
         case .bottom:
@@ -401,7 +409,7 @@ struct SubtitleRenderer {
                 height: textHeight
             )
             UIGraphicsPushContext(context)
-            attributedString.draw(in: textRect)
+            attributedString.draw(with: textRect, options: [.usesLineFragmentOrigin, .usesFontLeading, .truncatesLastVisibleLine], context: nil)
             UIGraphicsPopContext()
 
         case .danmaku:
