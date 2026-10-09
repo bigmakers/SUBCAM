@@ -94,7 +94,8 @@ final class SpeechRecognitionService: NSObject, ObservableObject, SFSpeechRecogn
 
     func speechRecognizer(_ speechRecognizer: SFSpeechRecognizer, availabilityDidChange available: Bool) {
         recognitionQueue.async {
-            guard self.isRecognitionActive else { return }
+            // A recognizer from a previous language can still report in; only the current one counts
+            guard self.isRecognitionActive, speechRecognizer === self.speechRecognizer else { return }
             if available, self.recognitionRequest == nil {
                 self.beginRecognitionTaskLocked(with: speechRecognizer)
             } else if !available {
@@ -116,51 +117,65 @@ final class SpeechRecognitionService: NSObject, ObservableObject, SFSpeechRecogn
 
         recognitionTask = speechRecognizer.recognitionTask(with: request) { [weak self] result, error in
             guard let self else { return }
+            // Everything runs on recognitionQueue so a result from a task we already
+            // replaced (stop, language change, 55 s restart) can't touch the caption.
+            self.recognitionQueue.async {
+                guard generation == self.taskGeneration, self.isRecognitionActive else { return }
 
-            if let result {
-                gotResult = true
-                let text = result.bestTranscription.formattedString
-                self.currentText = text
-                DispatchQueue.main.async {
-                    self.displayText = text
-                }
-                self.recognitionQueue.async {
-                    guard generation == self.taskGeneration else { return }
+                if let result {
+                    gotResult = true
+                    let text = result.bestTranscription.formattedString
+                    self.currentText = text
+                    DispatchQueue.main.async { self.displayText = text }
                     self.consecutiveErrors = 0
                     self.setHint("")
                     if result.isFinal {
                         self.scheduleRestartLocked(after: 0.3)
                     }
                 }
-            }
 
-            if let error {
+                guard let error else { return }
                 let ns = error as NSError
-                self.recognitionQueue.async {
-                    guard generation == self.taskGeneration, self.isRecognitionActive else { return }
-                    print("[Speech] \(self.currentLocaleId) onDevice=\(onDevice) error \(ns.domain) \(ns.code): \(ns.localizedDescription)")
+                print("[Speech] \(self.currentLocaleId) onDevice=\(onDevice) error \(ns.domain) \(ns.code): \(ns.localizedDescription)")
+                switch Self.classify(ns) {
+                case .cancelled:
+                    return
+                case .noSpeech:
+                    // Silence until the recognizer gave up: a normal end of utterance
+                    self.scheduleRestartLocked(after: 0.3)
+                case .failure:
                     if onDevice && !gotResult {
                         // Most likely no on-device model for this language: retry via server
                         self.preferOnDevice = false
                         self.scheduleRestartLocked(after: 0.1)
-                        return
-                    }
-                    if gotResult {
+                    } else if gotResult {
                         self.scheduleRestartLocked(after: 0.3)
-                        return
+                    } else {
+                        self.consecutiveErrors += 1
+                        if self.consecutiveErrors >= 3 {
+                            self.setHint(L10n.speechUnavailable)
+                        }
+                        let delay = min(0.3 * pow(2.0, Double(self.consecutiveErrors - 1)), 5.0)
+                        self.scheduleRestartLocked(after: delay)
                     }
-                    self.consecutiveErrors += 1
-                    if self.consecutiveErrors >= 3 {
-                        self.setHint(L10n.speechUnavailable)
-                    }
-                    let delay = min(0.3 * pow(2.0, Double(self.consecutiveErrors - 1)), 5.0)
-                    self.scheduleRestartLocked(after: delay)
                 }
             }
         }
 
         // Auto-restart before the 60-second limit
         scheduleRestartLocked(after: 55)
+    }
+
+    private enum SpeechErrorKind { case cancelled, noSpeech, failure }
+
+    /// Speech errors arrive from several private domains; the codes below are the ones
+    /// that are not real failures (our own cancel, or simply nobody speaking).
+    private static func classify(_ error: NSError) -> SpeechErrorKind {
+        switch error.code {
+        case 216, 301: return .cancelled     // request cancelled (kAFAssistantErrorDomain / kLSRErrorDomain)
+        case 1110: return .noSpeech          // "No speech detected"
+        default: return .failure
+        }
     }
 
     private func scheduleRestartLocked(after delay: TimeInterval) {
@@ -175,6 +190,7 @@ final class SpeechRecognitionService: NSObject, ObservableObject, SFSpeechRecogn
     }
 
     private func restartRecognitionLocked() {
+        taskGeneration += 1   // orphan callbacks from the task we are cancelling
         recognitionTask?.cancel()
         recognitionTask = nil
         recognitionRequest?.endAudio()

@@ -194,19 +194,91 @@ struct SubtitleRenderer {
         CVPixelBufferUnlockBaseAddress(destination, [])
     }
 
-    // MARK: - Standard mode (portrait, semi-transparent bar)
-
     // Minimum subtitle bar height in points
     private static let minBarHeight: CGFloat = 56
+
+    // MARK: - Caption layout (shared by both modes)
+
+    private struct LayoutKey: Equatable {
+        let text: String
+        let width: CGFloat
+        let height: CGFloat
+        let scale: CGFloat
+        let scope: Bool
+        let position: SubtitlePosition
+        let font: SubtitleFont
+        let darkText: Bool
+    }
+
+    private struct Layout {
+        let string: NSAttributedString
+        let fontSize: CGFloat
+        let textHeight: CGFloat
+    }
+
+    // A caption stays on screen for many frames, so the fitted layout (which costs
+    // several boundingRect passes) is cached for the most recent key. render() runs
+    // on the writer queue; the lock covers the DEBUG harness calling it from main.
+    private static let layoutLock = NSLock()
+    private static var cachedKey: LayoutKey?
+    private static var cachedLayout: Layout?
+
+    /// Wraps the caption up to `maxLines`, shrinking the font to 55% of the base size
+    /// before giving up; whatever still doesn't fit is truncated at draw time.
+    private static func fittedLayout(
+        key: LayoutKey,
+        baseFontSize: CGFloat,
+        maxTextWidth: CGFloat,
+        maxLines: CGFloat,
+        maxTextHeight: CGFloat,
+        make: (CGFloat) -> (NSAttributedString, UIFont)
+    ) -> Layout {
+        layoutLock.lock()
+        defer { layoutLock.unlock() }
+        if let cachedKey, cachedKey == key, let cachedLayout { return cachedLayout }
+
+        func wrappedHeight(_ string: NSAttributedString) -> CGFloat {
+            string.boundingRect(
+                with: CGSize(width: maxTextWidth, height: .greatestFiniteMagnitude),
+                options: [.usesLineFragmentOrigin, .usesFontLeading],
+                context: nil
+            ).height
+        }
+        func lineCap(_ font: UIFont) -> CGFloat { font.lineHeight * (maxLines + 0.2) }
+
+        var fontSize = baseFontSize
+        var (string, font) = make(fontSize)
+        var measured = wrappedHeight(string)
+        while (measured > lineCap(font) || measured > maxTextHeight) && fontSize > baseFontSize * 0.55 {
+            fontSize = max(fontSize * 0.9, baseFontSize * 0.55)
+            (string, font) = make(fontSize)
+            measured = wrappedHeight(string)
+        }
+        let layout = Layout(
+            string: string,
+            fontSize: fontSize,
+            textHeight: min(ceil(measured), ceil(lineCap(font)), maxTextHeight)
+        )
+        cachedKey = key
+        cachedLayout = layout
+        return layout
+    }
+
+    private static func drawCaption(_ layout: Layout, in rect: CGRect, context: CGContext) {
+        UIGraphicsPushContext(context)
+        layout.string.draw(with: rect, options: [.usesLineFragmentOrigin, .usesFontLeading, .truncatesLastVisibleLine], context: nil)
+        UIGraphicsPopContext()
+    }
+
+    // MARK: - Standard mode (portrait, semi-transparent bar)
 
     private static func renderStandard(context: CGContext, text: String, width: CGFloat, height: CGFloat, subtitleScale: CGFloat = 1.0, subtitlePosition: SubtitlePosition = .bottom) {
         guard !text.isEmpty else { return }
 
         let barPadding = width * 0.05
-
+        let maxTextWidth = width - barPadding * 2
         let baseFontSize = 20.0 * subtitleScale * (width / 390.0)  // Scale relative to iPhone 14 Pro width
         let subtitleFont = SettingsService.shared.subtitleFont
-        let maxTextWidth = width - barPadding * 2
 
         let shadow = NSShadow()
         shadow.shadowColor = UIColor.black
@@ -215,11 +287,13 @@ struct SubtitleRenderer {
 
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.alignment = .center
-        // Word wrapping lets long captions flow onto extra lines; truncation of the
-        // last visible line is requested at draw time (.truncatesLastVisibleLine)
         paragraphStyle.lineBreakMode = .byWordWrapping
 
-        func makeString(_ size: CGFloat) -> (NSAttributedString, UIFont) {
+        // Up to three lines, mirroring the preview's lineLimit(3) + minimumScaleFactor(0.55)
+        let key = LayoutKey(text: text, width: width, height: height, scale: subtitleScale,
+                            scope: false, position: subtitlePosition, font: subtitleFont, darkText: false)
+        let layout = fittedLayout(key: key, baseFontSize: baseFontSize, maxTextWidth: maxTextWidth,
+                                  maxLines: 3, maxTextHeight: .greatestFiniteMagnitude) { size in
             let font = subtitleFont.uiFont(size: size, bold: true)
             let attributes: [NSAttributedString.Key: Any] = [
                 .font: font,
@@ -229,54 +303,18 @@ struct SubtitleRenderer {
             ]
             return (NSAttributedString(string: text, attributes: attributes), font)
         }
-        func wrappedHeight(_ string: NSAttributedString) -> CGFloat {
-            string.boundingRect(
-                with: CGSize(width: maxTextWidth, height: .greatestFiniteMagnitude),
-                options: [.usesLineFragmentOrigin, .usesFontLeading],
-                context: nil
-            ).height
-        }
+        let barHeight = max(height * 0.12 * subtitleScale, layout.textHeight + layout.fontSize, minBarHeight)
 
-        // Long captions (AI sentences especially) wrap up to three lines; if they still
-        // don't fit, shrink the font down to 55% before falling back to tail truncation.
-        // Mirrors the preview's lineLimit(3) + minimumScaleFactor(0.55).
-        let maxLines: CGFloat = 3
-        var fontSize = baseFontSize
-        var (attributedString, font) = makeString(fontSize)
-        var measuredHeight = wrappedHeight(attributedString)
-        while measuredHeight > font.lineHeight * (maxLines + 0.2) && fontSize > baseFontSize * 0.55 {
-            fontSize = max(fontSize * 0.9, baseFontSize * 0.55)
-            (attributedString, font) = makeString(fontSize)
-            measuredHeight = wrappedHeight(attributedString)
-        }
-        let textHeight = min(ceil(measuredHeight), ceil(font.lineHeight * (maxLines + 0.2)))
-        let barHeight = max(height * 0.12 * subtitleScale, textHeight + fontSize, minBarHeight)
-
-        func drawBarAndText(barY: CGFloat) {
-            context.setFillColor(UIColor.black.withAlphaComponent(0.6).cgColor)
-            context.fill(CGRect(x: 0, y: barY, width: width, height: barHeight))
-            let textRect = CGRect(
-                x: barPadding,
-                y: barY + (barHeight - textHeight) / 2,
-                width: maxTextWidth,
-                height: textHeight
-            )
-            UIGraphicsPushContext(context)
-            attributedString.draw(with: textRect, options: [.usesLineFragmentOrigin, .usesFontLeading, .truncatesLastVisibleLine], context: nil)
-            UIGraphicsPopContext()
-        }
-
+        let barY: CGFloat
         switch subtitlePosition {
-        case .top:
-            drawBarAndText(barY: 0)
-
-        case .center:
-            drawBarAndText(barY: (height - barHeight) / 2)
-
-        case .bottom:
-            drawBarAndText(barY: height - barHeight)
-
+        case .top: barY = 0
+        case .center: barY = (height - barHeight) / 2
+        case .bottom: barY = height - barHeight
         }
+        context.setFillColor(UIColor.black.withAlphaComponent(0.6).cgColor)
+        context.fill(CGRect(x: 0, y: barY, width: width, height: barHeight))
+        drawCaption(layout, in: CGRect(x: barPadding, y: barY + (barHeight - layout.textHeight) / 2,
+                                       width: maxTextWidth, height: layout.textHeight), context: context)
     }
 
     // MARK: - CinemaScope mode (landscape, letterbox bars, cinematic subtitle)
@@ -295,10 +333,8 @@ struct SubtitleRenderer {
 
         guard !text.isEmpty else { return }
 
-        // Fit inside the bar: start at the base size, wrap up to two lines, and
-        // shrink down to 55% before truncating. Mirrors the preview's lineLimit(2).
-        // Inside a bar the text must fit the bar; centered over the picture it may use
-        // the base size and up to three lines (the preview behaves the same way).
+        // Inside a bar the text must fit the bar (two lines); centered over the picture
+        // it may use the base size and up to three lines. The preview behaves the same.
         let inBar = subtitlePosition == .top || subtitlePosition == .bottom
         let scaledFontSize = 18.0 * subtitleScale * (width / 844.0)  // Scale relative to iPhone 14 Pro landscape width
         let baseFontSize = inBar ? min(scaledFontSize, barHeight * 0.55) : scaledFontSize
@@ -319,15 +355,17 @@ struct SubtitleRenderer {
 
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.alignment = .center
-        // Word wrapping lets long captions flow onto extra lines; truncation of the
-        // last visible line is requested at draw time (.truncatesLastVisibleLine)
         paragraphStyle.lineBreakMode = .byWordWrapping
 
         let subtitleColor: UIColor = letterboxColor.usesDarkText
             ? UIColor(red: 0.1, green: 0.1, blue: 0.1, alpha: 1.0)
             : UIColor(red: 1.0, green: 0.98, blue: 0.94, alpha: 1.0)
 
-        func makeString(_ size: CGFloat) -> (NSAttributedString, UIFont) {
+        let key = LayoutKey(text: text, width: width, height: height, scale: subtitleScale,
+                            scope: true, position: subtitlePosition, font: subtitleFont,
+                            darkText: letterboxColor.usesDarkText)
+        let layout = fittedLayout(key: key, baseFontSize: baseFontSize, maxTextWidth: maxTextWidth,
+                                  maxLines: maxLines, maxTextHeight: maxTextHeight) { size in
             let font = subtitleFont.uiFont(size: size, bold: false)
             let attributes: [NSAttributedString.Key: Any] = [
                 .font: font,
@@ -338,60 +376,14 @@ struct SubtitleRenderer {
             ]
             return (NSAttributedString(string: text, attributes: attributes), font)
         }
-        func wrappedHeight(_ string: NSAttributedString) -> CGFloat {
-            string.boundingRect(
-                with: CGSize(width: maxTextWidth, height: .greatestFiniteMagnitude),
-                options: [.usesLineFragmentOrigin, .usesFontLeading],
-                context: nil
-            ).height
-        }
 
-        var fontSize = baseFontSize
-        var (attributedString, font) = makeString(fontSize)
-        var measuredHeight = wrappedHeight(attributedString)
-        while (measuredHeight > maxTextHeight || measuredHeight > font.lineHeight * (maxLines + 0.2)) && fontSize > baseFontSize * 0.55 {
-            fontSize = max(fontSize * 0.9, baseFontSize * 0.55)
-            (attributedString, font) = makeString(fontSize)
-            measuredHeight = wrappedHeight(attributedString)
-        }
-        let textHeight = min(ceil(measuredHeight), maxTextHeight)
-
+        let textY: CGFloat
         switch subtitlePosition {
-        case .top:
-            let textRect = CGRect(
-                x: textPadding,
-                y: (barHeight - textHeight) / 2,
-                width: width - textPadding * 2,
-                height: textHeight
-            )
-            UIGraphicsPushContext(context)
-            attributedString.draw(with: textRect, options: [.usesLineFragmentOrigin, .usesFontLeading, .truncatesLastVisibleLine], context: nil)
-            UIGraphicsPopContext()
-
-        case .center:
-            let textRect = CGRect(
-                x: textPadding,
-                y: (height - textHeight) / 2,
-                width: width - textPadding * 2,
-                height: textHeight
-            )
-            UIGraphicsPushContext(context)
-            attributedString.draw(with: textRect, options: [.usesLineFragmentOrigin, .usesFontLeading, .truncatesLastVisibleLine], context: nil)
-            UIGraphicsPopContext()
-
-        case .bottom:
-            let bottomBarY = height - barHeight
-            let textRect = CGRect(
-                x: textPadding,
-                y: bottomBarY + (barHeight - textHeight) / 2,
-                width: width - textPadding * 2,
-                height: textHeight
-            )
-            UIGraphicsPushContext(context)
-            attributedString.draw(with: textRect, options: [.usesLineFragmentOrigin, .usesFontLeading, .truncatesLastVisibleLine], context: nil)
-            UIGraphicsPopContext()
-
+        case .top: textY = (barHeight - layout.textHeight) / 2
+        case .center: textY = (height - layout.textHeight) / 2
+        case .bottom: textY = (height - barHeight) + (barHeight - layout.textHeight) / 2
         }
+        drawCaption(layout, in: CGRect(x: textPadding, y: textY, width: maxTextWidth, height: layout.textHeight), context: context)
     }
 
     /// Calculate letterbox bar height ratio for preview overlay
